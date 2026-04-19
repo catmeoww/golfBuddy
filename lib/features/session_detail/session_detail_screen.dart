@@ -2,10 +2,26 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/di.dart';
 import '../../domain/models/annotation.dart';
+import '../../domain/models/metric.dart';
+import '../../domain/models/session.dart';
+import '../../domain/models/pose_frame.dart';
+import '../../domain/models/swing_analysis.dart';
+import '../analysis/analysis_controller.dart';
+import '../analysis/metric_cards/head_stability_card.dart';
+import '../analysis/metric_cards/hip_turn_card.dart';
+import '../analysis/metric_cards/metric_card.dart';
+import '../analysis/metric_cards/shoulder_turn_card.dart';
+import '../analysis/metric_cards/tempo_card.dart';
+import '../analysis/phase_scrubber.dart';
+import '../analysis/skeleton_overlay.dart';
+import '../../services/pose/metrics/head_stability.dart';
+import '../../services/pose/metrics/rotation.dart';
+import '../../services/pose/metrics/tempo.dart';
 import 'add_annotation_sheet.dart';
 import 'session_detail_controller.dart';
 
@@ -23,9 +39,11 @@ class _SessionDetailScreenState
     extends ConsumerState<SessionDetailScreen> {
   VideoPlayerController? _video;
   bool _videoReady = false;
+  int _positionMs = 0;
 
   @override
   void dispose() {
+    _video?.removeListener(_onVideoTick);
     _video?.dispose();
     super.dispose();
   }
@@ -37,10 +55,25 @@ class _SessionDetailScreenState
     final controller = VideoPlayerController.file(file);
     await controller.initialize();
     if (!mounted) return;
+    controller.addListener(_onVideoTick);
     setState(() {
       _video = controller;
       _videoReady = true;
     });
+  }
+
+  void _onVideoTick() {
+    if (!mounted || _video == null) return;
+    final ms = _video!.value.position.inMilliseconds;
+    if (ms != _positionMs) {
+      setState(() => _positionMs = ms);
+    }
+  }
+
+  void _seek(int ms) {
+    final v = _video;
+    if (v == null || !v.value.isInitialized) return;
+    v.seekTo(Duration(milliseconds: ms));
   }
 
   @override
@@ -48,9 +81,27 @@ class _SessionDetailScreenState
     final sessionAsync = ref.watch(sessionByIdProvider(widget.sessionId));
     final annotationsAsync =
         ref.watch(annotationsForSessionProvider(widget.sessionId));
+    final metricsAsync =
+        ref.watch(metricsForSessionProvider(widget.sessionId));
+    final phasesAsync =
+        ref.watch(phasesForSessionProvider(widget.sessionId));
+    final poseFramesAsync =
+        ref.watch(poseFramesForSessionProvider(widget.sessionId));
+    final analyzeState =
+        ref.watch(analyzeControllerProvider(widget.sessionId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Session')),
+      appBar: AppBar(
+        title: const Text('Session'),
+        actions: [
+          IconButton(
+            tooltip: 'Compare',
+            icon: const Icon(Icons.compare_arrows),
+            onPressed: () =>
+                context.go('/library/sessions/${widget.sessionId}/compare'),
+          ),
+        ],
+      ),
       body: sessionAsync.when(
         data: (session) {
           if (session == null) {
@@ -62,6 +113,10 @@ class _SessionDetailScreenState
           final tournamentAsync = session.tournamentId == null
               ? const AsyncValue.data(null)
               : ref.watch(tournamentByIdProvider(session.tournamentId!));
+          final annotations =
+              annotationsAsync.value ?? const <Annotation>[];
+          final phases = phasesAsync.value ?? const <PhaseMarker>[];
+          final poseFrames = poseFramesAsync.value ?? const [];
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -71,27 +126,67 @@ class _SessionDetailScreenState
                 capturedAt: session.capturedAt,
                 club: session.club,
                 tournamentName: tournamentAsync.value?.name,
+                quality: session.quality,
               ),
+              if (session.quality == AnalysisQuality.failed)
+                _FailureBanner(
+                  message: analyzeState.asError?.error.toString() ??
+                      'Analysis failed. Video + notes still work; try again.',
+                ),
               _VideoArea(
                 controller: _videoReady ? _video : null,
                 videoPath: session.videoPath,
+                poseFrames: poseFrames,
+                positionMs: _positionMs,
+                showOverlay: session.quality == AnalysisQuality.ok ||
+                    session.quality == AnalysisQuality.partial,
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: annotationsAsync.when(
-                  data: (notes) => _AnnotationsPanel(
-                    notes: notes,
-                    onAdd: () => _showAddAnnotation(null),
-                    onTapNote: (note) {
-                      final ts = note.timestampMs;
-                      if (ts != null && _video != null) {
-                        _video!.seekTo(Duration(milliseconds: ts));
-                      }
-                    },
+              const SizedBox(height: 4),
+              PhaseScrubber(
+                durationMs: session.durationMs,
+                positionMs: _positionMs,
+                phases: phases,
+                annotations: annotations,
+                onSeek: _seek,
+              ),
+              if (session.quality == AnalysisQuality.pending)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: FilledButton.icon(
+                    onPressed: analyzeState.isLoading
+                        ? null
+                        : () => ref
+                            .read(analyzeControllerProvider(widget.sessionId)
+                                .notifier)
+                            .run(),
+                    icon: analyzeState.isLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high),
+                    label: Text(analyzeState.isLoading
+                        ? 'Analyzing...'
+                        : 'Analyze this swing'),
                   ),
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Center(child: Text('$e')),
+                ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
+                  children: [
+                    if (metricsAsync.value != null &&
+                        metricsAsync.value!.isNotEmpty)
+                      _MetricsSection(metrics: metricsAsync.value!),
+                    const SizedBox(height: 12),
+                    _AnnotationsSection(
+                      notes: annotations,
+                      onTapNote: (note) {
+                        final ts = note.timestampMs;
+                        if (ts != null) _seek(ts);
+                      },
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -135,6 +230,7 @@ class _ContextBanner extends StatelessWidget {
   const _ContextBanner({
     required this.playerName,
     required this.capturedAt,
+    required this.quality,
     this.club,
     this.tournamentName,
   });
@@ -143,6 +239,7 @@ class _ContextBanner extends StatelessWidget {
   final DateTime capturedAt;
   final String? club;
   final String? tournamentName;
+  final AnalysisQuality quality;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +262,8 @@ class _ContextBanner extends StatelessWidget {
                 Text(
                   _fmt(capturedAt) +
                       (club != null ? ' · $club' : '') +
-                      (tournamentName != null ? ' · $tournamentName' : ''),
+                      (tournamentName != null ? ' · $tournamentName' : '') +
+                      ' · ${quality.name}',
                   style: theme.textTheme.bodySmall,
                 ),
               ],
@@ -184,11 +282,43 @@ class _ContextBanner extends StatelessWidget {
   }
 }
 
+class _FailureBanner extends StatelessWidget {
+  const _FailureBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Analysis failed: $message')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _VideoArea extends StatelessWidget {
-  const _VideoArea({required this.controller, required this.videoPath});
+  const _VideoArea({
+    required this.controller,
+    required this.videoPath,
+    required this.poseFrames,
+    required this.positionMs,
+    required this.showOverlay,
+  });
 
   final VideoPlayerController? controller;
   final String videoPath;
+  final List<PoseFrame> poseFrames;
+  final int positionMs;
+  final bool showOverlay;
 
   @override
   Widget build(BuildContext context) {
@@ -213,6 +343,17 @@ class _VideoArea extends StatelessWidget {
       child: Stack(
         children: [
           VideoPlayer(c),
+          if (showOverlay && poseFrames.isNotEmpty)
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: SkeletonOverlay(
+                    frames: poseFrames,
+                    positionMs: positionMs,
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             right: 8,
             bottom: 8,
@@ -238,23 +379,79 @@ class _VideoArea extends StatelessWidget {
   }
 }
 
-class _AnnotationsPanel extends StatelessWidget {
-  const _AnnotationsPanel({
+class _MetricsSection extends StatelessWidget {
+  const _MetricsSection({required this.metrics});
+
+  final List<Metric> metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    Metric? find(String name) {
+      for (final m in metrics) {
+        if (m.name == name) return m;
+      }
+      return null;
+    }
+
+    final tempo = find(TempoCalculator.metricName);
+    final shoulder = find(RotationCalculator.shoulderMetric);
+    final hip = find(RotationCalculator.hipMetric);
+    final head = find(HeadStabilityCalculator.metricName);
+
+    final cards = <Widget>[];
+    if (tempo != null && tempo.confidence >= 0.5) {
+      cards.add(TempoCard(metric: tempo));
+    } else if (tempo != null) {
+      cards.add(const MetricCard(
+          title: 'Tempo ratio', valueText: 'Couldn\u2019t measure reliably'));
+    }
+    if (shoulder != null && shoulder.confidence >= 0.5) {
+      cards.add(ShoulderTurnCard(metric: shoulder));
+    }
+    if (hip != null && hip.confidence >= 0.5) {
+      cards.add(HipTurnCard(metric: hip));
+    }
+    if (head != null && head.confidence >= 0.5) {
+      cards.add(HeadStabilityCard(metric: head));
+    }
+    if (cards.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: Text('Metrics',
+              style: Theme.of(context).textTheme.titleMedium),
+        ),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 1.6,
+          children: cards,
+        ),
+      ],
+    );
+  }
+}
+
+class _AnnotationsSection extends StatelessWidget {
+  const _AnnotationsSection({
     required this.notes,
-    required this.onAdd,
     required this.onTapNote,
   });
 
   final List<Annotation> notes;
-  final VoidCallback onAdd;
   final ValueChanged<Annotation> onTapNote;
 
   @override
   Widget build(BuildContext context) {
     final sessionNote = notes.where((n) => n.timestampMs == null).toList();
     final anchored = notes.where((n) => n.timestampMs != null).toList();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('Notes', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),

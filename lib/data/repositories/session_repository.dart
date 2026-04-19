@@ -77,6 +77,11 @@ class SessionRepository {
     );
   }
 
+  Future<void> updateQuality(String sessionId, AnalysisQuality quality) {
+    return (_db.update(_db.sessions)..where((s) => s.id.equals(sessionId)))
+        .write(SessionsCompanion(quality: Value(quality.name)));
+  }
+
   Future<void> delete(String id) {
     return (_db.delete(_db.sessions)..where((s) => s.id.equals(id))).go();
   }

@@ -4,12 +4,15 @@ import 'package:go_router/go_router.dart';
 
 import 'core/bootstrap.dart';
 import 'features/capture/capture_screen.dart';
+import 'features/library/compare_screen.dart';
 import 'features/library/library_screen.dart';
+import 'features/library/trend_screen.dart';
 import 'features/session_detail/session_detail_screen.dart';
 import 'features/settings/players_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/settings/storage_screen.dart';
 import 'features/tournaments/tournaments_screen.dart';
+import 'services/pose/metrics/tempo.dart';
 
 // Three top-level branches per UX IA (Library default, Capture, Settings).
 final _routerProvider = Provider<GoRouter>((ref) {
@@ -27,10 +30,36 @@ final _routerProvider = Provider<GoRouter>((ref) {
                 builder: (_, __) => const LibraryScreen(),
                 routes: [
                   GoRoute(
+                    path: 'trend',
+                    builder: (_, state) => TrendScreen(
+                      playerId: state.uri.queryParameters['playerId'] ?? '',
+                      metricName:
+                          state.uri.queryParameters['metricName'] ??
+                              TempoCalculator.metricName,
+                    ),
+                  ),
+                  GoRoute(
                     path: 'sessions/:id',
                     builder: (_, state) => SessionDetailScreen(
                       sessionId: state.pathParameters['id']!,
                     ),
+                    routes: [
+                      GoRoute(
+                        path: 'compare',
+                        builder: (_, state) => CompareScreen(
+                          sessionId: state.pathParameters['id']!,
+                        ),
+                        routes: [
+                          GoRoute(
+                            path: ':otherId',
+                            builder: (_, state) => CompareScreen(
+                              sessionId: state.pathParameters['id']!,
+                              otherId: state.pathParameters['otherId'],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   GoRoute(
                     path: 'tournaments',

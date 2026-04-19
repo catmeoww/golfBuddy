@@ -2,8 +2,7 @@
 import 'metric.dart';
 import 'phase.dart';
 import 'pose_frame.dart';
-
-enum AnalysisQuality { ok, partial, failed }
+import 'session.dart';
 
 class PhaseMarker {
   const PhaseMarker({

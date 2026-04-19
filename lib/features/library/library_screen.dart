@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../domain/models/player.dart';
 import '../../domain/models/tournament.dart';
+import '../../services/pose/metrics/tempo.dart';
 import 'library_controller.dart';
 import 'widgets/player_chip_row.dart';
 import 'widgets/session_card.dart';
@@ -16,11 +17,17 @@ class LibraryScreen extends ConsumerWidget {
     final sessionsAsync = ref.watch(librarySessionsProvider);
     final playersAsync = ref.watch(allPlayersProvider);
     final tournamentsAsync = ref.watch(allTournamentsProvider);
+    final filter = ref.watch(libraryFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Library'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.trending_up),
+            tooltip: 'Trend',
+            onPressed: () => _openTrend(context, ref, filter.playerId),
+          ),
           IconButton(
             icon: const Icon(Icons.emoji_events_outlined),
             tooltip: 'Tournaments',
@@ -79,6 +86,35 @@ class LibraryScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openTrend(
+    BuildContext context,
+    WidgetRef ref,
+    String? filteredPlayerId,
+  ) async {
+    String? playerId = filteredPlayerId;
+    if (playerId == null) {
+      final players = ref.read(allPlayersProvider).value ?? const <Player>[];
+      if (players.isEmpty) return;
+      playerId = await showDialog<String>(
+        context: context,
+        builder: (_) => SimpleDialog(
+          title: const Text('Pick a player'),
+          children: [
+            for (final p in players)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(context).pop(p.id),
+                child: Text(p.name),
+              ),
+          ],
+        ),
+      );
+      if (playerId == null) return;
+    }
+    if (!context.mounted) return;
+    context.go(
+        '/library/trend?playerId=$playerId&metricName=${TempoCalculator.metricName}');
   }
 }
 
