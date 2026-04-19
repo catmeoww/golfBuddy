@@ -1,42 +1,69 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import 'tables/annotations.dart';
 import 'tables/metrics.dart';
 import 'tables/phase_markers.dart';
 import 'tables/players.dart';
 import 'tables/sessions.dart';
+import 'tables/tournaments.dart';
 
 part 'database.g.dart';
 
-// LLD §5 + §9 — Drift database. Schema version tracked for migrations; every
-// upgrade must ship a MigrationStrategy.onUpgrade step with a backup step.
-@DriftDatabase(tables: [Players, Sessions, PhaseMarkers, Metrics])
+@DriftDatabase(
+  tables: [
+    Players,
+    Sessions,
+    PhaseMarkers,
+    Metrics,
+    Tournaments,
+    Annotations,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
-          // Indexes per LLD §5.
-          await customStatement(
-            'CREATE INDEX IF NOT EXISTS idx_sessions_player_time '
-            'ON sessions(player_id, captured_at DESC)',
-          );
-          await customStatement(
-            'CREATE INDEX IF NOT EXISTS idx_metrics_session_name '
-            'ON metrics(session_id, name)',
-          );
+          await _createIndexes();
         },
         onUpgrade: (m, from, to) async {
-          // TODO: add upgrade steps as schemaVersion grows.
+          if (from < 2) {
+            await m.createTable(tournaments);
+            await m.createTable(annotations);
+            await m.addColumn(players, players.playerType);
+            await m.addColumn(sessions, sessions.tournamentId);
+            await m.addColumn(sessions, sessions.tournamentRelation);
+          }
+          await _createIndexes();
         },
       );
+
+  Future<void> _createIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sessions_player_time '
+      'ON sessions(player_id, captured_at DESC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sessions_tournament '
+      'ON sessions(tournament_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_metrics_session_name '
+      'ON metrics(session_id, name)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_annotations_session_ts '
+      'ON annotations(session_id, timestamp_ms)',
+    );
+  }
 }
 
 QueryExecutor _openConnection() {

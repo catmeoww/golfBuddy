@@ -2,19 +2,44 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/bootstrap.dart';
 import 'features/capture/capture_screen.dart';
-import 'features/history/history_screen.dart';
+import 'features/library/library_screen.dart';
+import 'features/session_detail/session_detail_screen.dart';
+import 'features/settings/players_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/settings/storage_screen.dart';
+import 'features/tournaments/tournaments_screen.dart';
 
-// Root router — three top-level shell branches per UX IA (Capture/History/Settings).
+// Three top-level branches per UX IA (Library default, Capture, Settings).
 final _routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: '/capture',
+    initialLocation: '/library',
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             _RootShell(navigationShell: navigationShell),
         branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/library',
+                builder: (_, __) => const LibraryScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'sessions/:id',
+                    builder: (_, state) => SessionDetailScreen(
+                      sessionId: state.pathParameters['id']!,
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'tournaments',
+                    builder: (_, __) => const TournamentsScreen(),
+                  ),
+                ],
+              ),
+            ],
+          ),
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -26,16 +51,22 @@ final _routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/history',
-                builder: (_, __) => const HistoryScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/settings',
                 builder: (_, __) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'players',
+                    builder: (_, __) => const PlayersScreen(),
+                  ),
+                  GoRoute(
+                    path: 'tournaments',
+                    builder: (_, __) => const TournamentsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'storage',
+                    builder: (_, __) => const StorageScreen(),
+                  ),
+                ],
               ),
             ],
           ),
@@ -50,6 +81,7 @@ class GolfBuddyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(bootstrapProvider);
     final router = ref.watch(_routerProvider);
     return MaterialApp.router(
       title: 'GolfBuddy',
@@ -79,14 +111,14 @@ class _RootShell extends StatelessWidget {
         ),
         destinations: const [
           NavigationDestination(
+            icon: Icon(Icons.photo_library_outlined),
+            selectedIcon: Icon(Icons.photo_library),
+            label: 'Library',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.videocam_outlined),
             selectedIcon: Icon(Icons.videocam),
             label: 'Capture',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history),
-            label: 'History',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
