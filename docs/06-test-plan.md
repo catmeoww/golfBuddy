@@ -1,6 +1,6 @@
 # Test Plan — GolfBuddy MVP
 
-**Author:** Priya (QA)  ·  **Status:** Draft v0.1
+**Author:** Priya (QA)  ·  **Status:** Draft v0.2 (post-P01 synthesis)
 
 ## 1. Strategy
 
@@ -26,18 +26,27 @@ Three pillars, each with a clear bar:
 ## 3. Critical user journeys (integration tests)
 
 **CUJ-1: First-time capture.**
-Launch fresh install → grant camera → tap record → wait 3s → tap stop → trim auto-confirms → tag "Me" + "Driver" → analysis screen renders metrics.
+Launch fresh install → grant camera → Capture tab → player chip "Ethan" preselected → tap record → wait 3s → tap stop → trim auto-confirms → confirm sheet one-tap save → session appears in Library + analysis screen renders metrics.
 
-**CUJ-2: Capture friend's swing.**
-From History tab with 2 existing players → switch to Capture → record → tag "Friend Sam" → swing appears under Sam's history, not Annie's.
+**CUJ-2: Capture a different person.**
+From Library with 2 existing players → switch to Capture → tap chip row → pick "Friend Sam" (or add new) → record → save → swing appears under Sam in Library, not Ethan.
 
 **CUJ-3: Upload existing video.**
-Capture tab → upload → pick video → trim → tag → analysis renders.
+Capture tab → upload → pick video → trim → confirm sheet → save → analysis renders.
 
 **CUJ-4: Compare two swings.**
-History → open swing → compare → pick another → side-by-side scrubber works → metric deltas display.
+Library → open session → compare → pick another (same player default) → side-by-side scrubber works → metric deltas display.
 
-Each CUJ is automated and runs in CI on a Pixel 6 emulator with a fixture video preloaded.
+**CUJ-5: Tag session under a tournament event.**
+Settings → Tournaments → create "US Kids Spring Classic" (date range) → Capture a swing → confirm sheet → pick that tournament + relation "before" → save → open Tournaments → tournament detail → session appears under "Before."
+
+**CUJ-6: Add a timestamp annotation to a session.**
+Library → open session → Session review → scrubber at ~0.6s → "Add note" → type "hips open early" → save → marker appears on scrubber at 0.6s → tap marker → note text shown. Reload app → annotation persists.
+
+**CUJ-7: Compare two sessions across a tournament boundary.**
+Library → open a session tagged `before` a tournament → compare → sync mode "Align by tournament" → picker auto-suggests the closest `after` session for the same player → side-by-side renders → metric deltas display.
+
+Each CUJ is automated and runs in CI on a Pixel 6 emulator with fixture video + seeded DB preloaded.
 
 ## 4. Pose & metric accuracy validation
 
@@ -110,17 +119,19 @@ OS versions: Android 11 minimum, iOS 15 minimum. Devices updated to latest patch
 
 ## 7. Field test checklist
 
-Run on a real range before each beta release. Annie + Priya, ~60 minutes.
+Run in a real backyard / home coaching setting before each beta release. M (or a stand-in coach) + Priya, ~60 minutes, during an actual 10-min block plus post-block review.
 
-- [ ] Outdoor sun: screen readable, record button findable without looking
-- [ ] Glove on dominant hand: all controls usable
-- [ ] Phone on stand: countdown long enough to walk to hitting position
+- [ ] Phone on stand: countdown long enough to walk to the hitting position
 - [ ] Lock-record long-press works
+- [ ] Pre-capture "who are you filming" chip: pre-selection is correct; switching to a different player is ≤ 2 taps
 - [ ] Recording 5 swings in a row: no thermal throttle warnings, no app slowdown
-- [ ] Switch to friend's swing: tag flow under 5s
+- [ ] Post-block review: Library shows today's swings at the top, ordered by time
+- [ ] Add a session-level annotation and a timestamp annotation: both persist; marker visible on scrubber
+- [ ] Tag a session with a tournament + relation: tournament detail screen shows it grouped correctly
 - [ ] Open last week's session: thumbnail loads instantly
-- [ ] Compare two swings on a sunny screen: scrubber controls visible
-- [ ] Airplane mode: full app functional
+- [ ] Compare two swings: scrubber sync works; Align-by-tournament pick is sensible
+- [ ] Trend chart opens and renders with tournament markers
+- [ ] Airplane mode: full app functional (simulate Wi-Fi blip during capture)
 - [ ] Storage view: actual usage matches estimates
 
 Any FAIL = release blocker until triaged.

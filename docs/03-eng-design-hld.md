@@ -1,6 +1,6 @@
 # High-Level Engineering Design — GolfBuddy MVP
 
-**Author:** Maya (Tech Lead)  ·  **Status:** Draft v0.1
+**Author:** Maya (Tech Lead)  ·  **Status:** Draft v0.2 (post-P01 synthesis)
 
 ## 1. Goals & constraints
 
@@ -9,6 +9,7 @@
 - Mid-tier Android target: Pixel 6a / Galaxy A54 baseline
 - Pose analysis must complete within 5s for a typical 2s swing video
 - Footprint: APK < 80MB, RAM peak < 600MB during analysis
+- Primary deployment context is indoor / backyard with Wi-Fi available — informs both the offline stance (still must work offline) and the v1.1 cloud-backup direction
 
 ## 2. Architecture decision: Flutter + on-device ML
 
@@ -28,42 +29,45 @@
 - Pose model is identical via MediaPipe regardless of host
 
 ### Why on-device, not cloud
-- Outdoor ranges have poor signal — analysis must work offline
+- Analysis must work offline regardless — a Wi-Fi blip can't block a 10-min block
 - No upload latency (great UX)
-- No server costs, no compliance burden, no PII leaves the phone
+- No server costs in MVP, no compliance burden, no PII leaves the phone
 - Pose models are small enough to bundle (≈10MB)
+- **Caveat:** backyard implies Wi-Fi is usually present, and coaches accumulate years of irreplaceable footage. Cloud backup (opt-in, encrypted) is promoted to top of v1.1 — see §7 and §9.
 
 ## 3. System diagram
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                  Flutter App                         │
-│                                                      │
-│  ┌────────────┐   ┌────────────┐   ┌─────────────┐   │
-│  │  Capture   │   │  Analysis  │   │   History   │   │
-│  │   feature  │   │   feature  │   │   feature   │   │
-│  └─────┬──────┘   └─────┬──────┘   └─────┬───────┘   │
-│        │                │                │           │
-│  ┌─────┴────────────────┴────────────────┴───────┐   │
-│  │            Domain layer (use cases)           │   │
-│  └─────┬────────────────┬────────────────┬───────┘   │
-│        │                │                │           │
-│  ┌─────┴──────┐  ┌──────┴──────┐  ┌─────┴───────┐    │
-│  │   Video    │  │    Pose     │  │   Storage   │    │
-│  │   service  │  │   pipeline  │  │  (Drift DB) │    │
-│  └─────┬──────┘  └──────┬──────┘  └─────────────┘    │
-│        │                │                            │
-│  ┌─────┴────────────────┴────────────────────────┐   │
-│  │  Platform channels                            │   │
-│  │  - camera plugin (Camera2 / AVFoundation)     │   │
-│  │  - ML Kit Pose Detection                      │   │
-│  │  - file system (path_provider)                │   │
-│  └───────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         Flutter App                              │
+│                                                                  │
+│  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌───────┐   │
+│  │ Library │ │ Capture  │ │ Analysis │ │Tournaments│ │ Notes │   │
+│  │ feature │ │ feature  │ │ feature  │ │  feature  │ │feature│   │
+│  └────┬────┘ └────┬─────┘ └────┬─────┘ └─────┬─────┘ └───┬───┘   │
+│       │           │            │             │           │       │
+│  ┌────┴───────────┴────────────┴─────────────┴───────────┴───┐   │
+│  │                 Domain layer (use cases)                  │   │
+│  └────┬───────────────────┬─────────────────┬────────────────┘   │
+│       │                   │                 │                    │
+│  ┌────┴───────┐   ┌───────┴──────┐   ┌──────┴──────┐             │
+│  │   Video    │   │     Pose     │   │   Storage   │             │
+│  │  service   │   │   pipeline   │   │  (Drift DB) │             │
+│  └────┬───────┘   └───────┬──────┘   └─────────────┘             │
+│       │                   │                                      │
+│  ┌────┴───────────────────┴────────────────────────┐             │
+│  │  Platform channels                              │             │
+│  │  - camera plugin (Camera2 / AVFoundation)       │             │
+│  │  - ML Kit Pose Detection                        │             │
+│  │  - file system (path_provider)                  │             │
+│  └─────────────────────────────────────────────────┘             │
+└──────────────────────────────────────────────────────────────────┘
               │                              │
               ▼                              ▼
        Device file system          Local SQLite (Drift)
-       (videos, thumbnails)        (sessions, players, metrics)
+       (videos, thumbnails)        (players, sessions, metrics,
+                                    phase_markers, tournaments,
+                                    annotations)
 ```
 
 ## 4. Tech stack
@@ -102,10 +106,12 @@ Owns camera lifecycle, framerate negotiation, recording → file. Returns a `Raw
 - Single source of truth: DB row references file path
 
 ### 5.5 Feature modules (Raj + Lin pairing)
-- `capture/` — UI + capture state machine
-- `analysis/` — playback, skeleton overlay shader, metric cards
-- `history/` — list + filter + compare picker
-- `settings/` — players, storage, preferences
+- `library/` — home screen; list + filter + trend entry + compare picker (replaces old `history/`)
+- `capture/` — UI + capture state machine (now with pre-capture player chip)
+- `analysis/` — playback, skeleton overlay shader, metric cards, annotations panel
+- `annotations/` — per-session and time-anchored notes (UI + state)
+- `tournaments/` — tournament CRUD + tournament detail view
+- `settings/` — players, tournaments management entry, storage, preferences, export-bundle
 
 ### 5.6 Domain layer
 Use-case classes (`AnalyzeSwing`, `CompareSwings`, `DeleteSession`) sit between UI and services. Keeps UI free of business logic, makes testing easier.
@@ -113,26 +119,53 @@ Use-case classes (`AnalyzeSwing`, `CompareSwings`, `DeleteSession`) sit between 
 ## 6. Data model (logical)
 
 ```
-Player        sessions →  Session   metrics →  Metric
-─────                     ──────                ──────
-id PK                     id PK                 session_id FK
-name                      player_id FK          name
-avatar_path               club                  value
-created_at                video_path            confidence
-                          thumb_path            
-                          captured_at           
-                          duration_ms           
-                          fps                   
-                                                
-                          phase_markers →  PhaseMarker
-                                           ─────────────
-                                           session_id FK
-                                           phase (enum)
-                                           frame_index
-                                           timestamp_ms
-                                           confidence
-                                           manually_adjusted (bool)
+Player              sessions →  Session           metrics →  Metric
+──────                          ──────                       ──────
+id PK                           id PK                        session_id FK
+name                            player_id FK                 name
+avatar_path                     tournament_id FK (nullable)  value
+player_type (enum)              tournament_relation          confidence
+created_at                      (before|during|after|null)
+                                club
+                                video_path
+                                thumb_path
+                                captured_at
+                                duration_ms
+                                fps
+
+                                phase_markers →  PhaseMarker
+                                                 ────────────
+                                                 session_id FK
+                                                 phase (enum)
+                                                 frame_index
+                                                 timestamp_ms
+                                                 confidence
+                                                 manually_adjusted (bool)
+
+                                annotations →    Annotation
+                                                 ──────────
+                                                 id PK
+                                                 session_id FK
+                                                 timestamp_ms (nullable — null = session-level)
+                                                 text
+                                                 created_at
+
+Tournament    sessions →  Session (as above)
+──────────
+id PK
+name
+date_start
+date_end (nullable)
+location (nullable)
+notes (nullable)
+created_at
 ```
+
+**Enums**
+
+- `player_type`: `self | child | friend | student`
+- `tournament_relation`: `before | during | after` (nullable; only set when `tournament_id` is set)
+- `swing_phase`: `address | top | impact | finish`
 
 ## 7. Key non-functional concerns
 
@@ -146,6 +179,7 @@ created_at                video_path            confidence
 - Camera permission with clear rationale
 - All data on-device; no analytics SDK that ships PII
 - Settings → "Delete all my data" wipes DB + files
+- Special care: player names may be minors' names — treat as sensitive in any future telemetry
 
 ### Offline
 - All MVP features must work airplane-mode
@@ -154,6 +188,11 @@ created_at                video_path            confidence
 ### Battery
 - Stop camera preview when not in capture tab
 - Pose pipeline runs once per swing, not continuously
+
+### Export / portability (v1.1 scope note)
+- Video + DB rows + annotations must be exportable as a single bundle (zip of mp4s + sqlite + JSON manifest) so a coach can hand the library to another coach, keep a local backup, or migrate devices
+- MVP: stub the export-bundle entry point in Settings (grayed "Coming in v1.1")
+- v1.1 also covers opt-in encrypted cloud backup (see §9)
 
 ### Crash & error handling
 - Sentry for crashes (anonymized, opt-in)
@@ -171,6 +210,7 @@ created_at                video_path            confidence
 - **Drift vs Isar vs Hive** — chose Drift for SQL flexibility for trend queries
 - **No remote config in MVP** — accept slower iteration in exchange for zero infra
 - **No A/B test framework in MVP** — usage too small to be statistically meaningful
+- **Cloud backup stance revised.** Original MVP stance was "no cloud, ever." Post-P01 we're moving cloud backup into v1.1 priority. Backyard/Wi-Fi is the norm, and coaches hold years of irreplaceable footage of their kids — losing a phone cannot mean losing the library. Open design question: opaque encrypted blob (simpler, no server insight into media) vs. per-session object store (easier partial restore). Not MVP scope, but we want the schema/export path to accommodate this without a rewrite.
 
 ## 10. Risks the eng team owns
 

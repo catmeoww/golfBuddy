@@ -1,6 +1,6 @@
 # Low-Level Engineering Design — GolfBuddy MVP
 
-**Authors:** Raj (Mobile) + Sofia (CV/ML)  ·  **Status:** Draft v0.1
+**Authors:** Raj (Mobile) + Sofia (CV/ML)  ·  **Status:** Draft v0.2 (post-P01 synthesis)
 
 ## 1. Project layout
 
@@ -20,24 +20,33 @@ lib/
 │   │   │   ├── players.dart
 │   │   │   ├── sessions.dart
 │   │   │   ├── metrics.dart
-│   │   │   └── phase_markers.dart
+│   │   │   ├── phase_markers.dart
+│   │   │   ├── tournaments.dart
+│   │   │   └── annotations.dart
 │   │   └── daos/
 │   ├── files/
 │   │   └── video_storage.dart  # path resolution, cleanup
 │   └── repositories/
 │       ├── player_repository.dart
 │       ├── session_repository.dart
-│       └── metric_repository.dart
+│       ├── metric_repository.dart
+│       ├── tournament_repository.dart
+│       └── annotation_repository.dart
 ├── domain/
 │   ├── models/
 │   │   ├── swing_analysis.dart
 │   │   ├── pose_frame.dart
 │   │   ├── phase.dart
-│   │   └── metric.dart
+│   │   ├── metric.dart
+│   │   ├── player_type.dart
+│   │   ├── tournament.dart
+│   │   └── annotation.dart
 │   └── usecases/
 │       ├── analyze_swing.dart
 │       ├── compare_swings.dart
-│       └── adjust_phase.dart
+│       ├── adjust_phase.dart
+│       ├── add_annotation.dart
+│       └── tag_session_tournament.dart
 ├── services/
 │   ├── camera/
 │   │   ├── capture_controller.dart
@@ -56,17 +65,26 @@ lib/
 └── features/
     ├── capture/
     │   ├── capture_screen.dart
+    │   ├── player_chip_selector.dart   # pre-capture "who are you filming?"
     │   ├── trim_screen.dart
-    │   └── tag_sheet.dart
+    │   └── confirm_sheet.dart          # player + club + tournament post-capture
     ├── analysis/
     │   ├── analysis_screen.dart
-    │   ├── skeleton_overlay.dart   # CustomPainter
-    │   ├── phase_scrubber.dart
+    │   ├── skeleton_overlay.dart       # CustomPainter
+    │   ├── phase_scrubber.dart         # renders annotation markers too
     │   └── metric_cards/
-    ├── history/
-    │   ├── history_screen.dart
+    ├── library/
+    │   ├── library_screen.dart         # home / default tab
+    │   ├── session_grid.dart
     │   ├── compare_screen.dart
     │   └── trend_chart.dart
+    ├── annotations/
+    │   ├── annotations_panel.dart      # session-level + list of anchored notes
+    │   └── add_note_sheet.dart
+    ├── tournaments/
+    │   ├── tournaments_screen.dart
+    │   ├── tournament_detail_screen.dart
+    │   └── tournament_picker.dart      # used from confirm_sheet
     └── settings/
         ├── settings_screen.dart
         ├── players_screen.dart
@@ -85,6 +103,10 @@ fixtures/
 
 ```dart
 enum SwingPhase { address, top, impact, finish }
+
+enum PlayerType { self, child, friend, student }
+
+enum TournamentRelation { before, during, after }
 
 class PoseFrame {
   final int index;
@@ -114,6 +136,24 @@ class SwingAnalysis {
   final List<PhaseMarker> phases;
   final List<Metric> metrics;
   final AnalysisQuality quality;       // ok | partial | failed
+}
+
+class Tournament {
+  final String id;
+  final String name;
+  final DateTime dateStart;
+  final DateTime? dateEnd;             // null = single-day event
+  final String? location;
+  final String? notes;
+  final DateTime createdAt;
+}
+
+class Annotation {
+  final String id;
+  final String sessionId;
+  final int? timestampMs;              // null = session-level overall note
+  final String text;
+  final DateTime createdAt;
 }
 ```
 
@@ -188,20 +228,23 @@ class Players extends Table {
   TextColumn  get id          => text()();
   TextColumn  get name        => text()();
   TextColumn  get avatarPath  => text().nullable()();
+  TextColumn  get playerType  => text()();   // self | child | friend | student
   DateTimeColumn get createdAt => dateTime()();
   @override Set<Column> get primaryKey => {id};
 }
 
 class Sessions extends Table {
-  TextColumn  get id         => text()();
-  TextColumn  get playerId   => text().references(Players, #id)();
-  TextColumn  get club       => text().nullable()();
-  TextColumn  get videoPath  => text()();
-  TextColumn  get thumbPath  => text()();
+  TextColumn  get id           => text()();
+  TextColumn  get playerId     => text().references(Players, #id)();
+  TextColumn  get tournamentId => text().nullable().references(Tournaments, #id)();
+  TextColumn  get tournamentRelation => text().nullable()();  // before | during | after
+  TextColumn  get club         => text().nullable()();
+  TextColumn  get videoPath    => text()();
+  TextColumn  get thumbPath    => text()();
   DateTimeColumn get capturedAt => dateTime()();
-  IntColumn   get durationMs => integer()();
-  IntColumn   get fps        => integer()();
-  TextColumn  get quality    => text()();   // ok | partial | failed
+  IntColumn   get durationMs   => integer()();
+  IntColumn   get fps          => integer()();
+  TextColumn  get quality      => text()();   // ok | partial | failed
   @override Set<Column> get primaryKey => {id};
 }
 
@@ -223,9 +266,33 @@ class Metrics extends Table {
   TextColumn  get bandLabel  => text().nullable()();
   @override Set<Column> get primaryKey => {sessionId, name};
 }
+
+class Tournaments extends Table {
+  TextColumn     get id         => text()();
+  TextColumn     get name       => text()();
+  DateTimeColumn get dateStart  => dateTime()();
+  DateTimeColumn get dateEnd    => dateTime().nullable()();
+  TextColumn     get location   => text().nullable()();
+  TextColumn     get notes      => text().nullable()();
+  DateTimeColumn get createdAt  => dateTime()();
+  @override Set<Column> get primaryKey => {id};
+}
+
+class Annotations extends Table {
+  TextColumn     get id          => text()();
+  TextColumn     get sessionId   => text().references(Sessions, #id)();
+  IntColumn      get timestampMs => integer().nullable()();   // null = session-level
+  TextColumn     get text        => text()();
+  DateTimeColumn get createdAt   => dateTime()();
+  @override Set<Column> get primaryKey => {id};
+}
 ```
 
-Indexes: `Sessions(playerId, capturedAt DESC)`, `Metrics(sessionId, name)`.
+Indexes: `Sessions(playerId, capturedAt DESC)`, `Sessions(tournamentId)`, `Metrics(sessionId, name)`, `Annotations(sessionId, timestampMs)`.
+
+**Storage notes:**
+- Annotations are text-only for MVP. Audio-note annotations are v1.1 — schema would grow `audio_path` and `duration_ms` columns; no schema reshuffle required.
+- On first run, seed one player ("Ethan", `player_type=child`) to remove setup friction for the primary persona. User can rename or delete.
 
 ## 6. State management
 

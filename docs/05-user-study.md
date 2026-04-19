@@ -1,6 +1,6 @@
 # User Study Plan — GolfBuddy MVP
 
-**Authors:** Jordan (PM) + Lin (UX)  ·  **Status:** Draft v0.1
+**Authors:** Jordan (PM) + Lin (UX)  ·  **Status:** Draft v0.2 (post-P01 synthesis)
 
 ## 1. Research goals
 
@@ -18,15 +18,17 @@ We need to answer:
 **Goal:** Validate the problem and pressure-test the MVP scope before any code.
 
 - **Method:** 30-min remote interviews
-- **Participants:** 6 recreational golfers — mix of solo + with-friends preference, age 25–55, mix of Android/iOS
-- **Recruitment:** Local driving range bulletin board + Reddit r/golf + Annie's network (3 from each)
+- **Participants:** 6 **parent-coaches or hobby coaches** who regularly coach at least one person (child, spouse, friend, mentee). Mix of coaching frequency (daily to monthly) and student type (child vs. adult peer). Mix of Android/iOS.
+- **Recruitment:** US Kids Golf parent communities, local junior golf programs, Reddit r/golf + r/juniorgolf, M's referrals. Avoid pure recreational golfers for this phase — Phase 1 is now coach-focused.
+- **Screener:** `research/phase-1-discovery/screener-coach.md` (new). The prior `screener.md` is retained as a secondary/alt screener for a recreational-golfer pass if we decide to widen later.
 - **Compensation:** $30 gift card
 - **Script topics:**
-  - Walk me through your last range session
-  - Have you ever filmed yourself? What did you do with the video?
-  - What do you wish you knew about your swing?
-  - Show competitor: SwingU, Zepp, V1 Golf — what works, what doesn't?
-- **Output:** Interview synthesis doc, 3–5 themes, scope adjustments to PRD
+  - Walk me through your last coaching block (who, where, how long)
+  - How do you currently capture and organize swings — if at all?
+  - How do you decide what to work on each session?
+  - What do you wish you could annotate, compare, or track over time?
+  - Show competitor: V1 Golf, Hudl Technique, Coach's Eye — what works, what doesn't?
+- **Output:** Interview synthesis doc, 3–5 themes, scope adjustments to PRD. (P01 proxy synthesis already on file — re-verify with M directly.)
 
 ### Phase 2 — Concept testing (mid-build, week 3)
 
@@ -44,16 +46,17 @@ We need to answer:
 
 ### Phase 3 — Field test (alpha, week 6–8)
 
-**Goal:** Real range, real conditions, real failure modes.
+**Goal:** Real coaching context, real conditions, real failure modes.
 
-- **Method:** In-person at 2 driving ranges. Researcher (Lin) present, observes, interviews after.
-- **Participants:** 6 alpha users including Annie. Each does a normal 30-min range session with the app installed.
+- **Method:** In-person visits to wherever the alpha users actually coach — backyard, home net, indoor sim, range, whatever's real. Researcher (Lin) present, observes, interviews after.
+- **Participants:** 6 alpha users including M. Each runs a normal coaching block (typically 10–30 min) with the app installed.
 - **Observation focus:**
   - Phone-stand setup time and reliability
-  - One-handed glove use
-  - Sun/glare on screen
-  - Time between hitting a ball and reviewing the analysis
-  - Did they actually change anything based on the feedback?
+  - Pre-capture "who are you filming" tap count
+  - Time from end-of-block to first annotation (the review moment)
+  - Library findability: can they re-find last week's session in ≤ 10s?
+  - Tournament tagging: do they actually use it, or is it friction?
+  - Did the coach change anything about next session based on the review?
 - **Output:** Critical issue list (P0/P1/P2), photo/video documentation, post-session interview transcripts
 
 ### Phase 4 — Closed beta diary study (week 8–12)
@@ -82,14 +85,18 @@ Run alongside Phase 2. Show users a video where the skeleton is intentionally sl
 ### S2. Coach interview (for v1.1 planning)
 Single deep interview with Annie's husband and 2 other coaches. Topics: how they currently teach, what artifacts they share with students, what tools they use, what they'd pay for.
 
-## 4. Recruitment screener (Phase 1 example)
+## 4. Recruitment screener (Phase 1)
 
-1. Do you play golf at least once a month? *(must be yes)*
-2. Have you been to a driving range in the last 60 days? *(must be yes)*
-3. Self-assessed handicap or skill level *(want a spread)*
-4. Do you sometimes go alone, with friends, or both? *(want a mix; bias toward "both")*
-5. Smartphone OS *(want at least 2 Android, 2 iOS)*
-6. Have you ever used a swing-analysis app? *(want a mix)*
+Full screener lives at `research/phase-1-discovery/screener-coach.md`. Summary filter criteria:
+
+1. Do you regularly coach anyone on their golf swing — child, spouse, friend, mentee? *(must be yes — frequency at least monthly)*
+2. How often do you coach that person? *(want a spread, bias toward weekly+)*
+3. Do you currently record video of their swings? *(want a mix of yes/no)*
+4. If yes, where do those videos live today? *(open text; signal on pain)*
+5. Is your student a child, an adult peer, or both? *(want a mix; bias toward "at least one child" since that's the validated persona)*
+6. Smartphone OS *(want at least 2 Android, 2 iOS)*
+
+The prior `screener.md` (recreational-golfer persona) is retained as a secondary pass if we need to widen the ICP in a later phase.
 
 ## 5. Ethics & consent
 
