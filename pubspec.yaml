@@ -1,0 +1,51 @@
+name: golfbuddy
+description: Swing-analysis app for casual golfers. On-device pose analysis, history, compare.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.2.0
+
+  # Local DB
+  drift: ^2.18.0
+  drift_flutter: ^0.2.0
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.3
+  path: ^1.9.0
+
+  # Camera + media
+  camera: ^0.11.0+1
+  video_player: ^2.9.1
+  google_mlkit_pose_detection: ^0.14.0
+  ffmpeg_kit_flutter_min: ^6.0.3
+
+  # Charts
+  fl_chart: ^0.68.0
+
+  # Crash reporting
+  sentry_flutter: ^8.6.0
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+  drift_dev: ^2.18.0
+
+flutter:
+  uses-material-design: true
