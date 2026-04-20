@@ -99,12 +99,12 @@ class LibraryScreen extends ConsumerWidget {
       if (players.isEmpty) return;
       playerId = await showDialog<String>(
         context: context,
-        builder: (_) => SimpleDialog(
+        builder: (dialogContext) => SimpleDialog(
           title: const Text('Pick a player'),
           children: [
             for (final p in players)
               SimpleDialogOption(
-                onPressed: () => Navigator.of(context).pop(p.id),
+                onPressed: () => Navigator.of(dialogContext).pop(p.id),
                 child: Text(p.name),
               ),
           ],
