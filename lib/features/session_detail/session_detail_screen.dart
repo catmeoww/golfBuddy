@@ -152,93 +152,98 @@ class _SessionDetailScreenState
           final phases = phasesAsync.value ?? const <PhaseMarker>[];
           final poseFrames = poseFramesAsync.value ?? const [];
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _ContextBanner(
-                playerName: playerAsync.value?.name ?? '—',
-                capturedAt: session.capturedAt,
-                club: session.club,
-                tournamentName: tournamentAsync.value?.name,
-                quality: session.quality,
-              ),
-              if (session.quality == AnalysisQuality.failed)
-                _FailureBanner(
-                  message: analyzeState.asError?.error.toString() ??
-                      'Analysis failed. Video + notes still work; try again.',
+          return SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 96),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ContextBanner(
+                  playerName: playerAsync.value?.name ?? '—',
+                  capturedAt: session.capturedAt,
+                  club: session.club,
+                  tournamentName: tournamentAsync.value?.name,
+                  quality: session.quality,
                 ),
-              _VideoArea(
-                controller: _videoReady ? _video : null,
-                videoPath: session.videoPath,
-                poseFrames: poseFrames,
-                positionMs: _positionMs,
-                showOverlay: session.quality == AnalysisQuality.ok ||
-                    session.quality == AnalysisQuality.partial,
-                playbackSpeed: _playbackSpeed,
-                onPlayPause: _togglePlay,
-                onRestart: _restart,
-                onCycleSpeed: _cycleSpeed,
-              ),
-              const SizedBox(height: 4),
-              PhaseScrubber(
-                durationMs: session.durationMs,
-                positionMs: _positionMs,
-                phases: phases,
-                annotations: annotations,
-                onSeek: _seek,
-              ),
-              if (session.quality != AnalysisQuality.ok)
+                if (session.quality == AnalysisQuality.failed)
+                  _FailureBanner(
+                    message: analyzeState.asError?.error.toString() ??
+                        'Analysis failed. Video + notes still work; try again.',
+                  ),
+                _VideoArea(
+                  controller: _videoReady ? _video : null,
+                  videoPath: session.videoPath,
+                  poseFrames: poseFrames,
+                  positionMs: _positionMs,
+                  showOverlay: session.quality == AnalysisQuality.ok ||
+                      session.quality == AnalysisQuality.partial,
+                  playbackSpeed: _playbackSpeed,
+                  onPlayPause: _togglePlay,
+                  onRestart: _restart,
+                  onCycleSpeed: _cycleSpeed,
+                ),
+                const SizedBox(height: 4),
+                PhaseScrubber(
+                  durationMs: session.durationMs,
+                  positionMs: _positionMs,
+                  phases: phases,
+                  annotations: annotations,
+                  onSeek: _seek,
+                ),
+                if (session.quality != AnalysisQuality.ok)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: FilledButton.icon(
+                      onPressed: analyzeState.isLoading
+                          ? null
+                          : () async {
+                              await ref
+                                  .read(analyzeControllerProvider(
+                                          widget.sessionId)
+                                      .notifier)
+                                  .run();
+                              ref.invalidate(
+                                  sessionByIdProvider(widget.sessionId));
+                            },
+                      icon: analyzeState.isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(session.quality == AnalysisQuality.failed
+                              ? Icons.refresh
+                              : Icons.auto_fix_high),
+                      label: Text(analyzeState.isLoading
+                          ? 'Analyzing...'
+                          : session.quality == AnalysisQuality.failed
+                              ? 'Retry analysis'
+                              : session.quality == AnalysisQuality.partial
+                                  ? 'Re-run analysis'
+                                  : 'Analyze this swing'),
+                    ),
+                  ),
                 Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: FilledButton.icon(
-                    onPressed: analyzeState.isLoading
-                        ? null
-                        : () async {
-                            await ref
-                                .read(analyzeControllerProvider(
-                                        widget.sessionId)
-                                    .notifier)
-                                .run();
-                            ref.invalidate(
-                                sessionByIdProvider(widget.sessionId));
-                          },
-                    icon: analyzeState.isLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(session.quality == AnalysisQuality.failed
-                            ? Icons.refresh
-                            : Icons.auto_fix_high),
-                    label: Text(analyzeState.isLoading
-                        ? 'Analyzing...'
-                        : session.quality == AnalysisQuality.failed
-                            ? 'Retry analysis'
-                            : session.quality == AnalysisQuality.partial
-                                ? 'Re-run analysis'
-                                : 'Analyze this swing'),
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (metricsAsync.value != null &&
+                          metricsAsync.value!.isNotEmpty)
+                        _MetricsSection(metrics: metricsAsync.value!),
+                      const SizedBox(height: 12),
+                      _AnnotationsSection(
+                        notes: annotations,
+                        onTapNote: (note) {
+                          final ts = note.timestampMs;
+                          if (ts != null) _seek(ts);
+                        },
+                      ),
+                    ],
                   ),
                 ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 96),
-                  children: [
-                    if (metricsAsync.value != null &&
-                        metricsAsync.value!.isNotEmpty)
-                      _MetricsSection(metrics: metricsAsync.value!),
-                    const SizedBox(height: 12),
-                    _AnnotationsSection(
-                      notes: annotations,
-                      onTapNote: (note) {
-                        final ts = note.timestampMs;
-                        if (ts != null) _seek(ts);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
