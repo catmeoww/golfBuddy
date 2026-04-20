@@ -10,24 +10,28 @@ class CaptureState {
   const CaptureState({
     this.stage = CaptureStage.idle,
     this.countdownRemaining = 0,
+    this.lensDirection = CameraLensDirection.back,
     this.error,
     this.recordedFile,
   });
 
   final CaptureStage stage;
   final int countdownRemaining;
+  final CameraLensDirection lensDirection;
   final String? error;
   final File? recordedFile;
 
   CaptureState copyWith({
     CaptureStage? stage,
     int? countdownRemaining,
+    CameraLensDirection? lensDirection,
     String? error,
     File? recordedFile,
   }) =>
       CaptureState(
         stage: stage ?? this.stage,
         countdownRemaining: countdownRemaining ?? this.countdownRemaining,
+        lensDirection: lensDirection ?? this.lensDirection,
         error: error,
         recordedFile: recordedFile ?? this.recordedFile,
       );
@@ -35,6 +39,7 @@ class CaptureState {
 
 class CaptureController extends AutoDisposeNotifier<CaptureState> {
   CameraController? _camera;
+  List<CameraDescription> _available = const [];
   Timer? _countdownTimer;
 
   @override
@@ -45,32 +50,60 @@ class CaptureController extends AutoDisposeNotifier<CaptureState> {
 
   CameraController? get cameraController => _camera;
 
+  bool get hasMultipleLenses {
+    final lenses =
+        _available.map((c) => c.lensDirection).toSet();
+    return lenses.length > 1;
+  }
+
   Future<void> initCamera() async {
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
+      _available = await availableCameras();
+      if (_available.isEmpty) {
         state = state.copyWith(
           stage: CaptureStage.error,
           error: 'No camera available',
         );
         return;
       }
-      final back = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
-      final controller = CameraController(
-        back,
-        ResolutionPreset.high,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-      await controller.initialize();
-      _camera = controller;
-      state = state.copyWith(stage: CaptureStage.preview);
+      await _switchTo(state.lensDirection);
     } catch (e) {
       state = state.copyWith(stage: CaptureStage.error, error: e.toString());
     }
+  }
+
+  Future<void> flipCamera() async {
+    if (!hasMultipleLenses) return;
+    if (state.stage == CaptureStage.recording ||
+        state.stage == CaptureStage.countdown) {
+      return;
+    }
+    final next = state.lensDirection == CameraLensDirection.back
+        ? CameraLensDirection.front
+        : CameraLensDirection.back;
+    await _switchTo(next);
+  }
+
+  Future<void> _switchTo(CameraLensDirection lens) async {
+    final target = _available.firstWhere(
+      (c) => c.lensDirection == lens,
+      orElse: () => _available.first,
+    );
+    final old = _camera;
+    _camera = null;
+    await old?.dispose();
+    final controller = CameraController(
+      target,
+      ResolutionPreset.high,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
+    );
+    await controller.initialize();
+    _camera = controller;
+    state = state.copyWith(
+      stage: CaptureStage.preview,
+      lensDirection: target.lensDirection,
+    );
   }
 
   Future<void> startCountdown(int seconds) async {
@@ -125,7 +158,7 @@ class CaptureController extends AutoDisposeNotifier<CaptureState> {
 
   void reset() {
     _countdownTimer?.cancel();
-    state = const CaptureState(stage: CaptureStage.preview);
+    state = state.copyWith(stage: CaptureStage.preview);
   }
 
   void _dispose() {

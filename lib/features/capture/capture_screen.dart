@@ -43,10 +43,25 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       }
     });
 
+    final notifier = ref.read(captureControllerProvider.notifier);
+    final canFlip = notifier.hasMultipleLenses;
+    final flipDisabled = capture.stage == CaptureStage.recording ||
+        capture.stage == CaptureStage.countdown;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Capture'),
         actions: [
+          IconButton(
+            tooltip: capture.lensDirection == CameraLensDirection.front
+                ? 'Switch to back camera'
+                : 'Switch to front camera',
+            icon: Icon(
+              capture.lensDirection == CameraLensDirection.front
+                  ? Icons.camera_rear_outlined
+                  : Icons.camera_front_outlined,
+            ),
+            onPressed: (!canFlip || flipDisabled) ? null : notifier.flipCamera,
+          ),
           DropdownButton<int>(
             value: _countdownSeconds,
             underline: const SizedBox.shrink(),
