@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../domain/models/session.dart';
+import '../../../services/video/thumbnail_generator.dart';
 
 class SessionCard extends StatelessWidget {
   const SessionCard({
@@ -29,7 +30,10 @@ class SessionCard extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: 3 / 4,
-            child: _Thumb(path: session.thumbPath),
+            child: _Thumb(
+              thumbPath: session.thumbPath,
+              videoPath: session.videoPath,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(8),
@@ -78,21 +82,57 @@ class SessionCard extends StatelessWidget {
   }
 }
 
-class _Thumb extends StatelessWidget {
-  const _Thumb({required this.path});
+class _Thumb extends StatefulWidget {
+  const _Thumb({required this.thumbPath, required this.videoPath});
 
-  final String path;
+  final String thumbPath;
+  final String videoPath;
+
+  @override
+  State<_Thumb> createState() => _ThumbState();
+}
+
+class _ThumbState extends State<_Thumb> {
+  bool _attempted = false;
+  int _version = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureThumb();
+  }
+
+  Future<void> _ensureThumb() async {
+    final thumb = File(widget.thumbPath);
+    if (await thumb.exists()) return;
+    final video = File(widget.videoPath);
+    if (!await video.exists()) return;
+    if (_attempted) return;
+    _attempted = true;
+    final ok = await const ThumbnailGenerator().generate(
+      videoPath: widget.videoPath,
+      outputPath: widget.thumbPath,
+    );
+    if (!mounted) return;
+    if (ok) setState(() => _version++);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final file = File(path);
+    final file = File(widget.thumbPath);
     if (!file.existsSync()) {
       return Container(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         child: const Icon(Icons.videocam_off_outlined, size: 32),
       );
     }
-    return Image.file(file, fit: BoxFit.cover);
+    // ValueKey forces a fresh FileImage after generation so Flutter's
+    // image cache doesn't keep serving the "missing file" state.
+    return Image.file(
+      file,
+      key: ValueKey('${widget.thumbPath}:$_version'),
+      fit: BoxFit.cover,
+    );
   }
 }
 

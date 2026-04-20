@@ -1,6 +1,7 @@
 package app.golfbuddy
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
@@ -9,6 +10,7 @@ import android.media.ImageReader
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -33,8 +35,53 @@ class FrameExtractorHandler(private val context: Context) : MethodChannel.Method
         when (call.method) {
             "extract" -> handleExtract(call, result)
             "cleanup" -> handleCleanup(call, result)
+            "thumbnail" -> handleThumbnail(call, result)
             else -> result.notImplemented()
         }
+    }
+
+    private fun handleThumbnail(call: MethodCall, result: MethodChannel.Result) {
+        val videoPath = call.argument<String>("videoPath")
+        val outputPath = call.argument<String>("outputPath")
+        val maxDim = call.argument<Int>("maxDim") ?: 512
+        if (videoPath == null || outputPath == null) {
+            result.error("bad_args", "Missing thumbnail arguments", null)
+            return
+        }
+        executor.execute {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(videoPath)
+                // First frame is always a sync frame, so getFrameAtTime(0) is precise.
+                val bitmap = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: throw IllegalStateException("No frame at 0")
+                val scaled = scaleBitmap(bitmap, maxDim)
+                File(outputPath).parentFile?.mkdirs()
+                FileOutputStream(outputPath).use { fos ->
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 85, fos)
+                }
+                if (scaled !== bitmap) bitmap.recycle()
+                scaled.recycle()
+                mainHandler.post { result.success(outputPath) }
+            } catch (t: Throwable) {
+                mainHandler.post {
+                    result.error("thumbnail_failed", t.message ?: t.toString(), null)
+                }
+            } finally {
+                try { retriever.release() } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    private fun scaleBitmap(src: Bitmap, maxDim: Int): Bitmap {
+        val w = src.width
+        val h = src.height
+        val longest = max(w, h)
+        if (longest <= maxDim) return src
+        val scale = maxDim.toFloat() / longest
+        val newW = (w * scale).toInt().coerceAtLeast(1)
+        val newH = (h * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(src, newW, newH, true)
     }
 
     private fun handleExtract(call: MethodCall, result: MethodChannel.Result) {

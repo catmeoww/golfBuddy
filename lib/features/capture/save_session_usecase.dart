@@ -7,6 +7,7 @@ import '../../core/di.dart';
 import '../../data/files/video_storage.dart';
 import '../../data/repositories/session_repository.dart';
 import '../../domain/models/session.dart';
+import '../../services/video/thumbnail_generator.dart';
 
 class SaveSessionInput {
   const SaveSessionInput({
@@ -29,10 +30,15 @@ class SaveSessionInput {
 }
 
 class SaveSession {
-  const SaveSession(this._storage, this._sessions);
+  const SaveSession(
+    this._storage,
+    this._sessions, [
+    this._thumbs = const ThumbnailGenerator(),
+  ]);
 
   final VideoStorage _storage;
   final SessionRepository _sessions;
+  final ThumbnailGenerator _thumbs;
 
   Future<String> call(SaveSessionInput input) async {
     final sessionId =
@@ -48,6 +54,8 @@ class SaveSession {
       await input.tempVideo.delete();
       return target;
     });
+
+    await _thumbs.generate(videoPath: targetPath, outputPath: thumbPath);
 
     await _sessions.insert(
       SwingSession(
