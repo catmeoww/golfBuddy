@@ -1,8 +1,9 @@
 import 'dart:io';
 
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 class ExtractedFrame {
   const ExtractedFrame({
@@ -23,13 +24,18 @@ class FrameExtractorException implements Exception {
   String toString() => 'FrameExtractorException: $message';
 }
 
-/// LLD §4 — extract frames from a recorded swing video via platform
-/// decoders. Capped at [capFps] (default 60) to keep pose inference in
-/// budget. One file-system read per frame; fine for sub-5s clips.
+/// LLD §4 — batch frame extraction via ffmpeg. One pass, then list the
+/// output directory. Capped at [maxFrames] total so a long clip doesn't
+/// blow the analysis time budget; effective fps is reduced to hit that
+/// cap on long videos.
 class FrameExtractor {
-  const FrameExtractor({this.capFps = 60});
+  const FrameExtractor({
+    this.capFps = 60,
+    this.maxFrames = 60,
+  });
 
   final int capFps;
+  final int maxFrames;
 
   Future<List<ExtractedFrame>> extract({
     required String videoPath,
@@ -40,44 +46,45 @@ class FrameExtractor {
     if (durationMs <= 0) {
       throw FrameExtractorException('durationMs must be > 0');
     }
-    final targetFps = sourceFps > capFps ? capFps : sourceFps;
-    final frameIntervalMs = (1000 / targetFps).round();
+    var targetFps = sourceFps > capFps ? capFps : sourceFps;
+    if (targetFps < 1) targetFps = 30;
+    final projected = (durationMs / 1000.0) * targetFps;
+    if (projected > maxFrames) {
+      final capped = (maxFrames * 1000.0 / durationMs).floor();
+      targetFps = capped < 1 ? 1 : capped;
+    }
     final outDir = await _scratchDir(sessionId);
-
-    final frames = <ExtractedFrame>[];
-    var index = 0;
-    for (var t = 0; t <= durationMs; t += frameIntervalMs) {
-      final rawPath = await VideoThumbnail.thumbnailFile(
-        video: videoPath,
-        thumbnailPath: outDir.path,
-        imageFormat: ImageFormat.JPEG,
-        timeMs: t,
-        quality: 75,
-      );
-      if (rawPath == null) continue;
-      final target = File(
-        p.join(outDir.path, 'frame_${index.toString().padLeft(5, '0')}.jpg'),
-      );
-      final source = File(rawPath);
-      if (source.path != target.path) {
-        if (await target.exists()) await target.delete();
-        await source.rename(target.path);
-      }
-      frames.add(
-        ExtractedFrame(
-          frameIndex: index,
-          timestampMs: t,
-          filePath: target.path,
-        ),
-      );
-      index++;
-    }
-    if (frames.isEmpty) {
+    final pattern = p.join(outDir.path, 'frame_%05d.jpg');
+    final cmd = "-y -i '$videoPath' -vf fps=$targetFps -q:v 4 '$pattern'";
+    final session = await FFmpegKit.execute(cmd);
+    final code = await session.getReturnCode();
+    if (!ReturnCode.isSuccess(code)) {
+      final logs = await session.getAllLogsAsString();
       throw FrameExtractorException(
-        'No frames extracted from $videoPath (durationMs=$durationMs).',
+        'ffmpeg failed (code=$code): ${logs ?? ''}',
       );
     }
-    return frames;
+
+    final files = outDir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.jpg'))
+        .toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+    if (files.isEmpty) {
+      throw FrameExtractorException(
+        'ffmpeg produced no frames for $videoPath',
+      );
+    }
+    final frameIntervalMs = (1000 / targetFps).round();
+    return [
+      for (var i = 0; i < files.length; i++)
+        ExtractedFrame(
+          frameIndex: i,
+          timestampMs: i * frameIntervalMs,
+          filePath: files[i].path,
+        ),
+    ];
   }
 
   Future<void> cleanup(String sessionId) async {
