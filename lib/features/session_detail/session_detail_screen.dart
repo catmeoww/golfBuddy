@@ -132,7 +132,7 @@ class _SessionDetailScreenState
             tooltip: 'Compare',
             icon: const Icon(Icons.compare_arrows),
             onPressed: () =>
-                context.go('/library/sessions/${widget.sessionId}/compare'),
+                context.push('/library/sessions/${widget.sessionId}/compare'),
           ),
         ],
       ),

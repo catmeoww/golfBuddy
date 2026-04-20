@@ -31,7 +31,7 @@ class LibraryScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.emoji_events_outlined),
             tooltip: 'Tournaments',
-            onPressed: () => context.go('/library/tournaments'),
+            onPressed: () => context.push('/library/tournaments'),
           ),
         ],
       ),
@@ -73,7 +73,7 @@ class LibraryScreen extends ConsumerWidget {
                       session: s,
                       playerName: player?.name ?? 'Unknown',
                       tournamentName: tournament?.name,
-                      onTap: () => context.go('/library/sessions/${s.id}'),
+                      onTap: () => context.push('/library/sessions/${s.id}'),
                     );
                   },
                 );
@@ -113,7 +113,7 @@ class LibraryScreen extends ConsumerWidget {
       if (playerId == null) return;
     }
     if (!context.mounted) return;
-    context.go(
+    context.push(
         '/library/trend?playerId=$playerId&metricName=${TempoCalculator.metricName}');
   }
 }

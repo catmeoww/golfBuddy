@@ -17,17 +17,17 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.person_outline),
             title: const Text('Players'),
-            onTap: () => context.go('/settings/players'),
+            onTap: () => context.push('/settings/players'),
           ),
           ListTile(
             leading: const Icon(Icons.emoji_events_outlined),
             title: const Text('Tournaments'),
-            onTap: () => context.go('/settings/tournaments'),
+            onTap: () => context.push('/settings/tournaments'),
           ),
           ListTile(
             leading: const Icon(Icons.storage_outlined),
             title: const Text('Storage'),
-            onTap: () => context.go('/settings/storage'),
+            onTap: () => context.push('/settings/storage'),
           ),
           const Divider(),
           ListTile(
