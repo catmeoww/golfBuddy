@@ -28,10 +28,11 @@ dependencies:
   camera: ^0.11.0+1
   video_player: ^2.9.1
   google_mlkit_pose_detection: ^0.14.0
-  # Frame extraction: community fork of Arthenica's ffmpeg_kit after
-  # the original was delisted from Maven. Batch extraction via ffmpeg
-  # CLI = one fast pass instead of N MediaMetadataRetriever calls.
-  ffmpeg_kit_flutter_new: ^2.0.0
+  # Frame extraction: deferred. Arthenica's ffmpeg_kit Maven AARs were
+  # delisted upstream and every community "fork" we tried still depends
+  # on them. Need a platform-channel MediaCodec extractor (Android) and
+  # AVAssetReader (iOS) for precise per-frame extraction. Analysis is
+  # stubbed until that lands.
 
   # Charts
   fl_chart: ^0.68.0
