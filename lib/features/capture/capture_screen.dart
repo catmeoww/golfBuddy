@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/di.dart';
 import '../../domain/models/player.dart';
 import '../library/library_controller.dart';
 import 'capture_controller.dart';
@@ -298,17 +299,19 @@ class _PlayerChipSelector extends ConsumerWidget {
       height: 52,
       child: playersAsync.when(
         data: (players) {
-          if (players.isEmpty) {
-            return const Center(
-              child: Text('Add a player in Settings to start capturing'),
-            );
-          }
           return ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: players.length,
+            itemCount: players.length + 1,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, i) {
+              if (i == players.length) {
+                return ActionChip(
+                  avatar: const Icon(Icons.add, size: 18),
+                  label: const Text('Add'),
+                  onPressed: () => _promptAddPlayer(context, ref),
+                );
+              }
               final p = players[i];
               return ChoiceChip(
                 label: Text(p.name),
@@ -327,5 +330,45 @@ class _PlayerChipSelector extends ConsumerWidget {
         error: (e, _) => Center(child: Text('$e')),
       ),
     );
+  }
+
+  Future<void> _promptAddPlayer(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add player'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (v) => Navigator.of(dialogContext).pop(v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+    final id = 'p-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+    await ref.read(playerRepositoryProvider).upsert(
+          Player(
+            id: id,
+            name: name,
+            type: PlayerType.friend,
+            createdAt: DateTime.now(),
+          ),
+        );
+    onSelect(id);
   }
 }
