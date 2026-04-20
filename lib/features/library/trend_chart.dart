@@ -21,7 +21,33 @@ class TrendChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (points.isEmpty) {
-      return const Center(child: Text('No data for this metric yet'));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.show_chart,
+                size: 64,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No trend yet for this metric',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Analyze a few swings and the chart will fill in '
+                'automatically.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      );
     }
     final xs = points
         .map((p) => p.capturedAt.millisecondsSinceEpoch.toDouble())

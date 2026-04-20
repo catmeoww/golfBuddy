@@ -114,8 +114,12 @@ class GolfBuddyApp extends ConsumerWidget {
     final router = ref.watch(_routerProvider);
     return MaterialApp.router(
       title: 'GolfBuddy',
+      themeMode: ThemeMode.light,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2E7D32),
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
       ),
       routerConfig: router,
