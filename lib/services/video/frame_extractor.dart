@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:flutter/services.dart';
 
 class ExtractedFrame {
   const ExtractedFrame({
@@ -19,16 +22,16 @@ class FrameExtractorException implements Exception {
   String toString() => 'FrameExtractorException: $message';
 }
 
-// STUB: see LLD §4 and the pubspec comment. Precise frame extraction is
-// blocked on shipping a platform-channel MediaCodec/AVAssetReader path.
-// AnalyzeSwing catches this and marks the session as failed so the rest
-// of the app (library, capture, annotations, tournaments, playback)
-// keeps working.
+/// LLD §4 — per-frame extractor. Android path uses a MediaCodec-backed
+/// platform channel; other platforms currently throw.
 class FrameExtractor {
   const FrameExtractor({this.capFps = 60, this.maxFrames = 60});
 
   final int capFps;
   final int maxFrames;
+
+  static const MethodChannel _channel =
+      MethodChannel('app.golfbuddy/frame_extractor');
 
   Future<List<ExtractedFrame>> extract({
     required String videoPath,
@@ -36,17 +39,65 @@ class FrameExtractor {
     required int durationMs,
     required String sessionId,
   }) async {
-    throw FrameExtractorException(
-      'Swing analysis is temporarily unavailable. We\u2019re rebuilding the '
-      'frame extractor on a native video decoder; the rest of the app '
-      '(capture, library, notes, compare) still works.',
+    if (!Platform.isAndroid) {
+      throw FrameExtractorException(
+        'Frame extraction is only implemented on Android for now.',
+      );
+    }
+    final targetFps = _computeTargetFps(
+      sourceFps: sourceFps,
+      durationMs: durationMs,
     );
+    try {
+      final raw = await _channel.invokeMethod<List<dynamic>>('extract', {
+        'videoPath': videoPath,
+        'sessionId': sessionId,
+        'targetFps': targetFps,
+        'durationMs': durationMs,
+        'capFps': capFps,
+        'maxFrames': maxFrames,
+      });
+      if (raw == null) return const [];
+      return raw
+          .cast<Map<dynamic, dynamic>>()
+          .map(
+            (e) => ExtractedFrame(
+              frameIndex: (e['frameIndex'] as num).toInt(),
+              timestampMs: (e['timestampMs'] as num).toInt(),
+              filePath: e['filePath'] as String,
+            ),
+          )
+          .toList(growable: false);
+    } on PlatformException catch (e) {
+      throw FrameExtractorException(e.message ?? e.code);
+    } on MissingPluginException catch (e) {
+      throw FrameExtractorException(
+        e.message ?? 'Frame extractor channel not registered.',
+      );
+    }
   }
 
   Future<void> cleanup(String sessionId) async {
-    final dir = Directory('/tmp/golfbuddy_frames/$sessionId');
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('cleanup', {'sessionId': sessionId});
+    } on PlatformException {
+      // best-effort cleanup
+    } on MissingPluginException {
+      // channel not available (tests); ignore
     }
+  }
+
+  int _computeTargetFps({required int sourceFps, required int durationMs}) {
+    var fps = sourceFps <= 0 ? 30 : sourceFps;
+    fps = math.min(fps, capFps);
+    if (fps < 1) fps = 1;
+    if (durationMs <= 0) return fps;
+    final projected = (durationMs / 1000.0) * fps;
+    if (projected > maxFrames) {
+      final adjusted = (maxFrames * 1000.0 / durationMs).floor();
+      fps = math.max(1, adjusted);
+    }
+    return fps;
   }
 }
