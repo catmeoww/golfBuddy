@@ -25,15 +25,17 @@ class SessionCard extends StatelessWidget {
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
           AspectRatio(
-            aspectRatio: 9 / 16,
+            aspectRatio: 3 / 4,
             child: _Thumb(path: session.thumbPath),
           ),
           Padding(
             padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   playerName,
@@ -51,6 +53,7 @@ class SessionCard extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 4),
                     child: Wrap(
                       spacing: 4,
+                      runSpacing: 2,
                       children: [
                         if (session.club != null)
                           _MetaChip(label: session.club!),
