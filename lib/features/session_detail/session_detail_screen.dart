@@ -379,24 +379,36 @@ class _VideoArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cap video area to 45% of screen height so portrait (9:16) clips
+    // don't push the Analyze button and metrics off the bottom.
+    final maxH = MediaQuery.sizeOf(context).height * 0.45;
     if (!File(videoPath).existsSync()) {
-      return const AspectRatio(
-        aspectRatio: 16 / 9,
-        child: ColoredBox(
-          color: Colors.black12,
-          child: Center(child: Text('Video file missing')),
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: const AspectRatio(
+          aspectRatio: 16 / 9,
+          child: ColoredBox(
+            color: Colors.black12,
+            child: Center(child: Text('Video file missing')),
+          ),
         ),
       );
     }
     final c = controller;
     if (c == null || !c.value.isInitialized) {
-      return const AspectRatio(
-        aspectRatio: 16 / 9,
-        child: Center(child: CircularProgressIndicator()),
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: const AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
-    return AspectRatio(
-      aspectRatio: c.value.aspectRatio == 0 ? 16 / 9 : c.value.aspectRatio,
+    final ratio = c.value.aspectRatio == 0 ? 16 / 9 : c.value.aspectRatio;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxH),
+      child: AspectRatio(
+      aspectRatio: ratio,
       child: Stack(
         children: [
           VideoPlayer(c),
@@ -461,6 +473,7 @@ class _VideoArea extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
