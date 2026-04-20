@@ -187,26 +187,37 @@ class _SessionDetailScreenState
                 annotations: annotations,
                 onSeek: _seek,
               ),
-              if (session.quality == AnalysisQuality.pending)
+              if (session.quality != AnalysisQuality.ok)
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: FilledButton.icon(
                     onPressed: analyzeState.isLoading
                         ? null
-                        : () => ref
-                            .read(analyzeControllerProvider(widget.sessionId)
-                                .notifier)
-                            .run(),
+                        : () async {
+                            await ref
+                                .read(analyzeControllerProvider(
+                                        widget.sessionId)
+                                    .notifier)
+                                .run();
+                            ref.invalidate(
+                                sessionByIdProvider(widget.sessionId));
+                          },
                     icon: analyzeState.isLoading
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.auto_fix_high),
+                        : Icon(session.quality == AnalysisQuality.failed
+                            ? Icons.refresh
+                            : Icons.auto_fix_high),
                     label: Text(analyzeState.isLoading
                         ? 'Analyzing...'
-                        : 'Analyze this swing'),
+                        : session.quality == AnalysisQuality.failed
+                            ? 'Retry analysis'
+                            : session.quality == AnalysisQuality.partial
+                                ? 'Re-run analysis'
+                                : 'Analyze this swing'),
                   ),
                 ),
               Expanded(
