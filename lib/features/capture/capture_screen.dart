@@ -85,6 +85,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               selectedId: _selectedPlayerId,
               onSelect: (id) => setState(() => _selectedPlayerId = id),
             ),
+            const _AngleHint(),
             Expanded(
               child: _Preview(
                 capture: capture,
@@ -241,6 +242,37 @@ class _ControlBar extends StatelessWidget {
               child: Icon(
                 isRecording ? Icons.stop : Icons.fiber_manual_record,
                 size: 36,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AngleHint extends StatelessWidget {
+  const _AngleHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'For accurate metrics, film down-the-line or face-on. '
+              'Behind-the-golfer loses most of the swing motion.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
