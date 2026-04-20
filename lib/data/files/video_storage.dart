@@ -26,6 +26,26 @@ class VideoStorage {
     return p.join(dir.path, '$sessionId.thumb.jpg');
   }
 
+  Future<int> sizeFor(String sessionId) async {
+    var total = 0;
+    final video = File(await resolveVideoPath(sessionId));
+    final thumb = File(await resolveThumbPath(sessionId));
+    if (await video.exists()) total += await video.length();
+    if (await thumb.exists()) total += await thumb.length();
+    return total;
+  }
+
+  Future<int> totalBytes() async {
+    final dir = await _swingsDir();
+    var total = 0;
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File) {
+        total += await entity.length();
+      }
+    }
+    return total;
+  }
+
   Future<void> delete(String sessionId) async {
     final video = File(await resolveVideoPath(sessionId));
     final thumb = File(await resolveThumbPath(sessionId));
@@ -35,5 +55,13 @@ class VideoStorage {
     if (await thumb.exists()) {
       await thumb.delete();
     }
+  }
+
+  Future<void> clearAll() async {
+    final dir = await _swingsDir();
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+    await _swingsDir();
   }
 }

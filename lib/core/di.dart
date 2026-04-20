@@ -10,6 +10,8 @@ import '../data/repositories/pose_frame_repository.dart';
 import '../data/repositories/session_repository.dart';
 import '../data/repositories/tournament_repository.dart';
 import '../domain/usecases/analyze_swing.dart';
+import '../domain/usecases/delete_session.dart';
+import '../domain/usecases/wipe_all_data.dart';
 
 // Single app-scoped Drift database. See LLD §5.
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -54,6 +56,20 @@ final analyzeSwingProvider = Provider<AnalyzeSwing>(
     poseFrameRepository: ref.watch(poseFrameRepositoryProvider),
     phaseMarkerRepository: ref.watch(phaseMarkerRepositoryProvider),
     metricRepository: ref.watch(metricRepositoryProvider),
+  ),
+);
+
+final deleteSessionProvider = Provider<DeleteSession>(
+  (ref) => DeleteSession(
+    db: ref.watch(appDatabaseProvider),
+    storage: ref.watch(videoStorageProvider),
+  ),
+);
+
+final wipeAllDataProvider = Provider<WipeAllData>(
+  (ref) => WipeAllData(
+    db: ref.watch(appDatabaseProvider),
+    storage: ref.watch(videoStorageProvider),
   ),
 );
 
