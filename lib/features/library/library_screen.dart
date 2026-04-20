@@ -113,6 +113,9 @@ class LibraryScreen extends ConsumerWidget {
       if (playerId == null) return;
     }
     if (!context.mounted) return;
+    // Wait for the dialog dismiss animation to settle before pushing.
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) return;
     context.push(
         '/library/trend?playerId=$playerId&metricName=${TempoCalculator.metricName}');
   }
