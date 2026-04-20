@@ -35,8 +35,10 @@ dependencies:
   # Charts
   fl_chart: ^0.68.0
 
-  # Crash reporting
-  sentry_flutter: ^8.6.0
+  # Crash reporting — deferred: sentry_flutter transitively pulls
+  # package_info_plus 10.x which crashes Kotlin K2 analysis. Restore
+  # when upstream supports Kotlin 2.1+.
+  # sentry_flutter: ^8.6.0
 
   cupertino_icons: ^1.0.8
 
