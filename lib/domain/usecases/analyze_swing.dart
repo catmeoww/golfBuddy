@@ -51,6 +51,7 @@ class AnalyzeSwing {
       final extracted = await frameExtractor.extract(
         videoPath: session.videoPath,
         sourceFps: session.fps,
+        durationMs: session.durationMs,
         sessionId: sessionId,
       );
       final poseFrames = await poseDetector.detect(extracted);
