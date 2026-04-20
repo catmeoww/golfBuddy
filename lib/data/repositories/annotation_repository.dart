@@ -26,7 +26,7 @@ class AnnotationRepository {
             id: annotation.id,
             sessionId: annotation.sessionId,
             timestampMs: Value(annotation.timestampMs),
-            text: annotation.text,
+            body: annotation.text,
             createdAt: annotation.createdAt,
           ),
         );
@@ -40,7 +40,7 @@ class AnnotationRepository {
         id: row.id,
         sessionId: row.sessionId,
         timestampMs: row.timestampMs,
-        text: row.text,
+        text: row.body,
         createdAt: row.createdAt,
       );
 }

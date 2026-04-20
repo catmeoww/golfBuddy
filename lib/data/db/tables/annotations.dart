@@ -10,7 +10,7 @@ class Annotations extends Table {
   TextColumn get id => text()();
   TextColumn get sessionId => text().references(Sessions, #id)();
   IntColumn get timestampMs => integer().nullable()();
-  TextColumn get text => text()();
+  TextColumn get body => text()();
   DateTimeColumn get createdAt => dateTime()();
 
   @override
