@@ -498,23 +498,25 @@ class _MetricsSection extends StatelessWidget {
     final hip = find(RotationCalculator.hipMetric);
     final head = find(HeadStabilityCalculator.metricName);
 
-    final cards = <Widget>[];
-    if (tempo != null && tempo.confidence >= 0.5) {
-      cards.add(TempoCard(metric: tempo));
-    } else if (tempo != null) {
-      cards.add(const MetricCard(
-          title: 'Tempo ratio', valueText: 'Couldn\u2019t measure reliably'));
-    }
-    if (shoulder != null && shoulder.confidence >= 0.5) {
-      cards.add(ShoulderTurnCard(metric: shoulder));
-    }
-    if (hip != null && hip.confidence >= 0.5) {
-      cards.add(HipTurnCard(metric: hip));
-    }
-    if (head != null && head.confidence >= 0.5) {
-      cards.add(HeadStabilityCard(metric: head));
-    }
-    if (cards.isEmpty) return const SizedBox.shrink();
+    const lowConfLabel = 'Couldn\u2019t measure reliably';
+    final cards = <Widget>[
+      if (tempo != null && tempo.confidence >= 0.5)
+        TempoCard(metric: tempo)
+      else
+        const MetricCard(title: 'Tempo ratio', valueText: lowConfLabel),
+      if (shoulder != null && shoulder.confidence >= 0.5)
+        ShoulderTurnCard(metric: shoulder)
+      else
+        const MetricCard(title: 'Shoulder turn', valueText: lowConfLabel),
+      if (hip != null && hip.confidence >= 0.5)
+        HipTurnCard(metric: hip)
+      else
+        const MetricCard(title: 'Hip turn', valueText: lowConfLabel),
+      if (head != null && head.confidence >= 0.5)
+        HeadStabilityCard(metric: head)
+      else
+        const MetricCard(title: 'Head stability', valueText: lowConfLabel),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
