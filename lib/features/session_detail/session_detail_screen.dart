@@ -40,6 +40,9 @@ class _SessionDetailScreenState
   VideoPlayerController? _video;
   bool _videoReady = false;
   int _positionMs = 0;
+  double _playbackSpeed = 1.0;
+
+  static const _speedCycle = [1.0, 0.5, 0.25];
 
   @override
   void dispose() {
@@ -55,11 +58,42 @@ class _SessionDetailScreenState
     final controller = VideoPlayerController.file(file);
     await controller.initialize();
     if (!mounted) return;
+    await controller.setLooping(true);
+    await controller.setPlaybackSpeed(_playbackSpeed);
     controller.addListener(_onVideoTick);
     setState(() {
       _video = controller;
       _videoReady = true;
     });
+  }
+
+  Future<void> _togglePlay() async {
+    final c = _video;
+    if (c == null || !c.value.isInitialized) return;
+    if (c.value.isPlaying) {
+      await c.pause();
+    } else {
+      if (c.value.position >= c.value.duration) {
+        await c.seekTo(Duration.zero);
+      }
+      await c.play();
+    }
+  }
+
+  Future<void> _restart() async {
+    final c = _video;
+    if (c == null || !c.value.isInitialized) return;
+    await c.seekTo(Duration.zero);
+    await c.play();
+  }
+
+  Future<void> _cycleSpeed() async {
+    final c = _video;
+    if (c == null || !c.value.isInitialized) return;
+    final i = _speedCycle.indexOf(_playbackSpeed);
+    final next = _speedCycle[(i + 1) % _speedCycle.length];
+    await c.setPlaybackSpeed(next);
+    setState(() => _playbackSpeed = next);
   }
 
   void _onVideoTick() {
@@ -140,6 +174,10 @@ class _SessionDetailScreenState
                 positionMs: _positionMs,
                 showOverlay: session.quality == AnalysisQuality.ok ||
                     session.quality == AnalysisQuality.partial,
+                playbackSpeed: _playbackSpeed,
+                onPlayPause: _togglePlay,
+                onRestart: _restart,
+                onCycleSpeed: _cycleSpeed,
               ),
               const SizedBox(height: 4),
               PhaseScrubber(
@@ -312,6 +350,10 @@ class _VideoArea extends StatelessWidget {
     required this.poseFrames,
     required this.positionMs,
     required this.showOverlay,
+    required this.playbackSpeed,
+    required this.onPlayPause,
+    required this.onRestart,
+    required this.onCycleSpeed,
   });
 
   final VideoPlayerController? controller;
@@ -319,6 +361,10 @@ class _VideoArea extends StatelessWidget {
   final List<PoseFrame> poseFrames;
   final int positionMs;
   final bool showOverlay;
+  final double playbackSpeed;
+  final VoidCallback onPlayPause;
+  final VoidCallback onRestart;
+  final VoidCallback onCycleSpeed;
 
   @override
   Widget build(BuildContext context) {
@@ -355,23 +401,53 @@ class _VideoArea extends StatelessWidget {
               ),
             ),
           Positioned(
+            left: 8,
             right: 8,
             bottom: 8,
-            child: FloatingActionButton.small(
-              heroTag: 'playToggle',
-              onPressed: () {
-                c.value.isPlaying ? c.pause() : c.play();
-              },
-              child: Icon(
-                c.value.isPlaying ? Icons.pause : Icons.play_arrow,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                VideoProgressIndicator(c, allowScrubbing: true),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'restart',
+                      backgroundColor:
+                          Colors.black.withValues(alpha: 0.5),
+                      foregroundColor: Colors.white,
+                      onPressed: onRestart,
+                      child: const Icon(Icons.replay),
+                    ),
+                    FloatingActionButton.small(
+                      heroTag: 'playToggle',
+                      onPressed: onPlayPause,
+                      child: Icon(
+                        c.value.isPlaying
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                      ),
+                    ),
+                    FloatingActionButton.small(
+                      heroTag: 'speed',
+                      backgroundColor:
+                          Colors.black.withValues(alpha: 0.5),
+                      foregroundColor: Colors.white,
+                      onPressed: onCycleSpeed,
+                      child: Text(
+                        playbackSpeed == 1.0
+                            ? '1x'
+                            : '${playbackSpeed}x',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
-          Positioned(
-            left: 8,
-            right: 64,
-            bottom: 8,
-            child: VideoProgressIndicator(c, allowScrubbing: true),
           ),
         ],
       ),
