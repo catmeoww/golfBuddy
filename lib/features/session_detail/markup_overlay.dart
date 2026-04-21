@@ -45,13 +45,10 @@ class _MarkupOverlayState extends State<MarkupOverlay> {
   String _newId() =>
       'mk-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
 
-  List<Markup> _visible() {
-    final w = widget.windowMs;
-    final p = widget.positionMs;
-    return widget.markups
-        .where((m) => (m.timestampMs - p).abs() <= w)
-        .toList(growable: false);
-  }
+  // FR-001 follow-up: markups are now persistent reference shapes — they
+  // stay visible across the whole clip regardless of scrubber position
+  // so the coach can watch the head leave or stay inside the circle.
+  List<Markup> _visible() => widget.markups;
 
   void _handleTap(Offset local, Size size) {
     if (widget.drawMode) return;

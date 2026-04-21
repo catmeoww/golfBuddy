@@ -232,7 +232,6 @@ class _SessionDetailScreenState
                   _DrawToolbar(
                     activeTool: _activeTool,
                     onPickTool: (k) => setState(() => _activeTool = k),
-                    onCancel: _toggleDrawMode,
                     onDone: _toggleDrawMode,
                   ),
                 _VideoArea(
@@ -707,48 +706,41 @@ class _DrawToolbar extends StatelessWidget {
   const _DrawToolbar({
     required this.activeTool,
     required this.onPickTool,
-    required this.onCancel,
     required this.onDone,
   });
 
   final MarkupKind activeTool;
   final ValueChanged<MarkupKind> onPickTool;
-  final VoidCallback onCancel;
   final VoidCallback onDone;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    Widget tool(IconData icon, String label, MarkupKind kind) {
-      final selected = activeTool == kind;
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: ChoiceChip(
-          label: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [Icon(icon, size: 16), const SizedBox(width: 4), Text(label)],
-          ),
-          selected: selected,
-          onSelected: (_) => onPickTool(kind),
-        ),
-      );
-    }
-
     return Material(
       color: scheme.surfaceContainerHighest,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Row(
           children: [
-            tool(Icons.radio_button_unchecked, 'Circle', MarkupKind.circle),
-            tool(Icons.show_chart, 'Line', MarkupKind.line),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: onCancel,
-              icon: const Icon(Icons.close),
-              label: const Text('Cancel'),
+            SegmentedButton<MarkupKind>(
+              segments: const [
+                ButtonSegment(
+                  value: MarkupKind.circle,
+                  label: Text('Circle'),
+                  icon: Icon(Icons.radio_button_unchecked),
+                ),
+                ButtonSegment(
+                  value: MarkupKind.line,
+                  label: Text('Line'),
+                  icon: Icon(Icons.show_chart),
+                ),
+              ],
+              selected: {activeTool},
+              showSelectedIcon: true,
+              onSelectionChanged: (set) =>
+                  onPickTool(set.isEmpty ? activeTool : set.first),
             ),
-            const SizedBox(width: 4),
+            const Spacer(),
             FilledButton.icon(
               onPressed: onDone,
               icon: const Icon(Icons.check),

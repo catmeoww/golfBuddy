@@ -67,11 +67,44 @@ Running log of feature requests from real users. Add a new entry every time a us
 
 ---
 
+## FR-006 — Upload existing video for analysis
+
+**Source:** Annie (and a prerequisite for Wen-Tai's FR-003).
+**Date raised:** 2026-04-21
+**Status:** planned (top priority after FR-001 ships)
+**Priority:** P0
+
+**What she wants:**
+- A back-catalog of swing videos already lives in Google Photos / device gallery. Open the app → pick a video → tag it like a captured session → it lands in the Library and can be analyzed and annotated like anything else.
+
+**Why it matters:**
+- Without this, every session has to be filmed inside the app from scratch. Most coaches and golfers already have hundreds of clips elsewhere.
+- This is also the prerequisite for FR-003 (pro-swing comparison) — the upload pipeline is the same, FR-003 just adds a `pro` player type on top.
+
+**Proposed scope (v1):**
+1. **Upload icon** on the Capture screen (top-left per UX §4 / PRD F1.4).
+2. Tap → system video picker (Android `image_picker` plugin or `file_picker`).
+3. Picked file is copied into the app's `swings/{sessionId}.mp4`. Re-use the existing `SaveSession` use case.
+4. Same post-capture tag sheet (player / club / tournament).
+5. Thumbnail generated on save (already implemented).
+6. Available immediately to Analyze (already implemented for Android).
+
+**Out of scope for v1:**
+- Trimming the imported video before save (it stays at original length).
+- Multi-select / bulk import (one at a time).
+- Imports from cloud sources beyond what the system picker exposes.
+
+**Notes:**
+- Need to add a Flutter package: `image_picker` (or `file_picker`) for the gallery sheet.
+- Android needs the `READ_MEDIA_VIDEO` permission (API 33+) declared in the manifest.
+
+---
+
 ## FR-003 — Pro-swing comparison with time-warped playback
 
 **Source:** Wen-Tai (husband / primary persona — name now known).
 **Date raised:** 2026-04-21
-**Status:** planned (queued behind FR-001 to avoid touching the same files)
+**Status:** planned (depends on FR-006 for the upload pipeline)
 **Priority:** P1
 
 **What he wants:**
