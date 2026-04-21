@@ -191,6 +191,32 @@ c. **Phase-anchored seek.** Tap "top of backswing" → both videos jump to their
 
 ---
 
+## FR-007 — Color picker for drawings
+
+**Source:** Annie.
+**Date raised:** 2026-04-21
+**Status:** planned
+**Priority:** P1
+
+**What she wants:**
+- Pick the color of the circle/line being drawn. Different colors for different reference shapes (e.g., yellow for head circle, green for spine line, red for feedback).
+
+**Why it matters:**
+- Multiple reference shapes on the same frame are visually confusing in a single accent color.
+- Coaches colour-code naturally — "red means wrong position, green means target" is already mental shorthand.
+
+**Proposed scope (v1):**
+- Small color swatch row in the `_DrawToolbar` next to the Circle/Line selector. ~5 preset swatches: yellow, green, red, blue, white.
+- Tap a swatch to make it active. Active tool *and* active color both highlighted.
+- The `Markups` table already stores a per-markup `color` int — no schema change.
+- Persist the last-used color per app session (in-memory is fine for v1).
+
+**Out of scope for v1:**
+- Custom RGB picker / color wheel.
+- Per-drawing re-color after the fact (delete + redraw is enough for v1).
+
+---
+
 ## How to add a new request
 
 When a user asks for something:
