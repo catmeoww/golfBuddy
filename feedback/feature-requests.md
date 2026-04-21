@@ -157,7 +157,7 @@ c. **Phase-anchored seek.** Tap "top of backswing" → both videos jump to their
 
 **Source:** Wen-Tai.
 **Date raised:** 2026-04-21
-**Status:** planned (queued behind FR-001 and FR-003)
+**Status:** in progress
 **Priority:** P1
 
 **What he wants:**
@@ -169,14 +169,15 @@ c. **Phase-anchored seek.** Tap "top of backswing" → both videos jump to their
 - This is the difference between filming "every now and then" and filming the whole block, which is the unlock for trend tracking over time.
 
 **Proposed scope (v1):**
-1. **Continuous-record mode** on the Capture screen (toggle). When on, recording doesn't auto-stop; user taps Stop once at the end.
-2. **Background swing-detection pass** after recording stops:
-   - Run pose detection on a coarse downsample of the long video (e.g., 5–10 fps).
-   - Use the same wrist-Y trajectory heuristic from `phase_detector.dart` to find swing windows: continuous arcs that include a clear top-of-backswing and impact, with quiet periods on either side.
-   - For each detected swing, define a clip from `address - 0.5s` to `finish + 0.5s`.
-3. **Auto-split the source video** into N session videos using ffmpeg trim (we have native MediaCodec on Android already; reuse the same path or add a trim method).
-4. **Insert N session rows** in the DB, all sharing the same player / club / tournament tag chosen pre-capture. Show a "Detected 7 swings" toast that links to the new sessions.
-5. Original long video is deleted after split (with a "keep original" toggle in Settings for v1.1).
+1. **Long-record toggle** on the Capture screen. When on, the usual auto-stop is disabled; user taps Stop once at the end.
+2. **Motion-magnitude swing detection** after recording stops:
+   - Extract frames at ~5 fps from the long video via the existing Android MediaCodec extractor.
+   - Compute per-frame motion magnitude (frame-diff / downsampled pixel delta).
+   - Smooth the sequence; threshold it; group contiguous high-motion frames into candidate swing windows.
+   - Merge windows closer than 1s apart. Drop windows shorter than 400ms.
+3. **Clip each window** with **2 seconds of padding** on each side (before and after). Use Android `MediaMuxer` + `MediaExtractor` for lossless stream-copy.
+4. **Insert N session rows** in the DB, all sharing the same player / club / tournament tag selected pre-capture. Show "Detected 7 swings" sheet listing the clips.
+5. Original long video is deleted after successful split.
 
 **Open questions:**
 - How many false positives is acceptable? Coach can delete bad clips from Storage screen.
