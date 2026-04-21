@@ -157,7 +157,7 @@ c. **Phase-anchored seek.** Tap "top of backswing" → both videos jump to their
 
 **Source:** Wen-Tai.
 **Date raised:** 2026-04-21
-**Status:** in progress
+**Status:** shipped on commit `1e2e58d`
 **Priority:** P1
 
 **What he wants:**
