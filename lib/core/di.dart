@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/database.dart';
 import '../data/files/video_storage.dart';
 import '../data/repositories/annotation_repository.dart';
+import '../data/repositories/markup_repository.dart';
 import '../data/repositories/metric_repository.dart';
 import '../data/repositories/phase_marker_repository.dart';
 import '../data/repositories/player_repository.dart';
@@ -36,6 +37,10 @@ final tournamentRepositoryProvider = Provider<TournamentRepository>(
 
 final annotationRepositoryProvider = Provider<AnnotationRepository>(
   (ref) => AnnotationRepository(ref.watch(appDatabaseProvider)),
+);
+
+final markupRepositoryProvider = Provider<MarkupRepository>(
+  (ref) => MarkupRepository(ref.watch(appDatabaseProvider)),
 );
 
 final metricRepositoryProvider = Provider<MetricRepository>(

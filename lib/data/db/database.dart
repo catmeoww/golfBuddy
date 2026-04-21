@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import 'tables/annotations.dart';
+import 'tables/markups.dart';
 import 'tables/metrics.dart';
 import 'tables/phase_markers.dart';
 import 'tables/players.dart';
@@ -20,6 +21,7 @@ part 'database.g.dart';
     Tournaments,
     Annotations,
     PoseFrames,
+    Markups,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -28,7 +30,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -47,6 +49,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             // v3: additive — cache pose detections so analysis replays offline.
             await m.createTable(poseFrames);
+          }
+          if (from < 4) {
+            // v4: additive — coach-drawn markups (FR-001).
+            await m.createTable(markups);
           }
           await _createIndexes();
         },
@@ -72,6 +78,10 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_pose_frames_session_time '
       'ON pose_frames(session_id, timestamp_ms)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_markups_session_ts '
+      'ON markups(session_id, timestamp_ms)',
     );
   }
 }

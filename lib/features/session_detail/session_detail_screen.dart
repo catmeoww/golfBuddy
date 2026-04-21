@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/di.dart';
 import '../../domain/models/annotation.dart';
+import '../../domain/models/markup.dart';
 import '../../domain/models/metric.dart';
 import '../../domain/models/session.dart';
 import '../../domain/models/pose_frame.dart';
@@ -23,6 +24,7 @@ import '../../services/pose/metrics/head_stability.dart';
 import '../../services/pose/metrics/rotation.dart';
 import '../../services/pose/metrics/tempo.dart';
 import 'add_annotation_sheet.dart';
+import 'markup_overlay.dart';
 import 'session_detail_controller.dart';
 
 class SessionDetailScreen extends ConsumerStatefulWidget {
@@ -41,6 +43,12 @@ class _SessionDetailScreenState
   bool _videoReady = false;
   int _positionMs = 0;
   double _playbackSpeed = 1.0;
+
+  // FR-001 — Draw mode state.
+  bool _drawMode = false;
+  MarkupKind _activeTool = MarkupKind.circle;
+  static const Color _drawColor = Color(0xFFFFC107);
+  static const double _drawStroke = 3.0;
 
   static const _speedCycle = [1.0, 0.5, 0.25];
 
@@ -110,6 +118,49 @@ class _SessionDetailScreenState
     v.seekTo(Duration(milliseconds: ms));
   }
 
+  void _toggleDrawMode() {
+    setState(() => _drawMode = !_drawMode);
+    if (_drawMode) {
+      // Pause so the coach is annotating a static frame.
+      _video?.pause();
+    }
+  }
+
+  Future<void> _confirmDeleteMarkup(Markup m) async {
+    if (_drawMode) return;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Delete drawing?'),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(sheetCtx).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => Navigator.of(sheetCtx).pop(true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(markupRepositoryProvider).delete(m.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionAsync = ref.watch(sessionByIdProvider(widget.sessionId));
@@ -121,6 +172,8 @@ class _SessionDetailScreenState
         ref.watch(phasesForSessionProvider(widget.sessionId));
     final poseFramesAsync =
         ref.watch(poseFramesForSessionProvider(widget.sessionId));
+    final markupsAsync =
+        ref.watch(markupsForSessionProvider(widget.sessionId));
     final analyzeState =
         ref.watch(analyzeControllerProvider(widget.sessionId));
 
@@ -128,6 +181,11 @@ class _SessionDetailScreenState
       appBar: AppBar(
         title: const Text('Session'),
         actions: [
+          IconButton(
+            tooltip: _drawMode ? 'Exit draw mode' : 'Draw on video',
+            icon: Icon(_drawMode ? Icons.edit_off : Icons.edit_outlined),
+            onPressed: _toggleDrawMode,
+          ),
           IconButton(
             tooltip: 'Compare',
             icon: const Icon(Icons.compare_arrows),
@@ -151,6 +209,7 @@ class _SessionDetailScreenState
               annotationsAsync.value ?? const <Annotation>[];
           final phases = phasesAsync.value ?? const <PhaseMarker>[];
           final poseFrames = poseFramesAsync.value ?? const [];
+          final markups = markupsAsync.value ?? const <Markup>[];
 
           return SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: 96),
@@ -169,6 +228,13 @@ class _SessionDetailScreenState
                     message: analyzeState.asError?.error.toString() ??
                         'Analysis failed. Video + notes still work; try again.',
                   ),
+                if (_drawMode)
+                  _DrawToolbar(
+                    activeTool: _activeTool,
+                    onPickTool: (k) => setState(() => _activeTool = k),
+                    onCancel: _toggleDrawMode,
+                    onDone: _toggleDrawMode,
+                  ),
                 _VideoArea(
                   controller: _videoReady ? _video : null,
                   videoPath: session.videoPath,
@@ -180,6 +246,16 @@ class _SessionDetailScreenState
                   onPlayPause: _togglePlay,
                   onRestart: _restart,
                   onCycleSpeed: _cycleSpeed,
+                  markups: markups,
+                  drawMode: _drawMode,
+                  activeTool: _activeTool,
+                  drawColor: _drawColor,
+                  drawStroke: _drawStroke,
+                  sessionId: widget.sessionId,
+                  onMarkupDrawn: (m) async {
+                    await ref.read(markupRepositoryProvider).insert(m);
+                  },
+                  onMarkupTapped: _confirmDeleteMarkup,
                 ),
                 const SizedBox(height: 4),
                 PhaseScrubber(
@@ -370,6 +446,14 @@ class _VideoArea extends StatelessWidget {
     required this.onPlayPause,
     required this.onRestart,
     required this.onCycleSpeed,
+    required this.markups,
+    required this.drawMode,
+    required this.activeTool,
+    required this.drawColor,
+    required this.drawStroke,
+    required this.sessionId,
+    required this.onMarkupDrawn,
+    required this.onMarkupTapped,
   });
 
   final VideoPlayerController? controller;
@@ -381,6 +465,14 @@ class _VideoArea extends StatelessWidget {
   final VoidCallback onPlayPause;
   final VoidCallback onRestart;
   final VoidCallback onCycleSpeed;
+  final List<Markup> markups;
+  final bool drawMode;
+  final MarkupKind activeTool;
+  final Color drawColor;
+  final double drawStroke;
+  final String sessionId;
+  final void Function(Markup) onMarkupDrawn;
+  final void Function(Markup) onMarkupTapped;
 
   @override
   Widget build(BuildContext context) {
@@ -428,6 +520,19 @@ class _VideoArea extends StatelessWidget {
                 ),
               ),
             ),
+          Positioned.fill(
+            child: MarkupOverlay(
+              markups: markups,
+              positionMs: positionMs,
+              drawMode: drawMode,
+              activeTool: activeTool,
+              color: drawColor,
+              strokeWidth: drawStroke,
+              sessionId: sessionId,
+              onDrawn: onMarkupDrawn,
+              onTapMarkup: onMarkupTapped,
+            ),
+          ),
           Positioned(
             left: 8,
             right: 8,
@@ -595,5 +700,63 @@ class _AnnotationsSection extends StatelessWidget {
   static String _formatMs(int ms) {
     final s = (ms / 1000).toStringAsFixed(2);
     return '${s}s';
+  }
+}
+
+class _DrawToolbar extends StatelessWidget {
+  const _DrawToolbar({
+    required this.activeTool,
+    required this.onPickTool,
+    required this.onCancel,
+    required this.onDone,
+  });
+
+  final MarkupKind activeTool;
+  final ValueChanged<MarkupKind> onPickTool;
+  final VoidCallback onCancel;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget tool(IconData icon, String label, MarkupKind kind) {
+      final selected = activeTool == kind;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ChoiceChip(
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [Icon(icon, size: 16), const SizedBox(width: 4), Text(label)],
+          ),
+          selected: selected,
+          onSelected: (_) => onPickTool(kind),
+        ),
+      );
+    }
+
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            tool(Icons.radio_button_unchecked, 'Circle', MarkupKind.circle),
+            tool(Icons.show_chart, 'Line', MarkupKind.line),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: onCancel,
+              icon: const Icon(Icons.close),
+              label: const Text('Cancel'),
+            ),
+            const SizedBox(width: 4),
+            FilledButton.icon(
+              onPressed: onDone,
+              icon: const Icon(Icons.check),
+              label: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

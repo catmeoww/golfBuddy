@@ -26,6 +26,9 @@ class DeleteSession {
       await (db.delete(db.poseFrames)
             ..where((t) => t.sessionId.equals(sessionId)))
           .go();
+      await (db.delete(db.markups)
+            ..where((t) => t.sessionId.equals(sessionId)))
+          .go();
       await (db.delete(db.sessions)..where((t) => t.id.equals(sessionId)))
           .go();
     });

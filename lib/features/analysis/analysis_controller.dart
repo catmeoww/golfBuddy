@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/di.dart';
+import '../../domain/models/markup.dart';
 import '../../domain/models/metric.dart';
 import '../../domain/models/pose_frame.dart';
 import '../../domain/models/swing_analysis.dart';
@@ -19,6 +20,11 @@ final phasesForSessionProvider =
 final poseFramesForSessionProvider =
     StreamProvider.family<List<PoseFrame>, String>((ref, sessionId) {
   return ref.watch(poseFrameRepositoryProvider).watchForSession(sessionId);
+});
+
+final markupsForSessionProvider =
+    StreamProvider.family<List<Markup>, String>((ref, sessionId) {
+  return ref.watch(markupRepositoryProvider).watchForSession(sessionId);
 });
 
 class AnalyzeController extends FamilyAsyncNotifier<AnalyzeSwingResult?, String> {

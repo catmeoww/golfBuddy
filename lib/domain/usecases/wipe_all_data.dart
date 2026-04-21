@@ -13,6 +13,7 @@ class WipeAllData {
   Future<void> call() async {
     await db.transaction(() async {
       await db.delete(db.annotations).go();
+      await db.delete(db.markups).go();
       await db.delete(db.metrics).go();
       await db.delete(db.phaseMarkers).go();
       await db.delete(db.poseFrames).go();
