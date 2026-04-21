@@ -11,6 +11,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaMuxer
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -36,6 +37,8 @@ class FrameExtractorHandler(private val context: Context) : MethodChannel.Method
             "extract" -> handleExtract(call, result)
             "cleanup" -> handleCleanup(call, result)
             "thumbnail" -> handleThumbnail(call, result)
+            "motionMagnitudes" -> handleMotionMagnitudes(call, result)
+            "trimClip" -> handleTrimClip(call, result)
             else -> result.notImplemented()
         }
     }
@@ -376,4 +379,269 @@ class FrameExtractorHandler(private val context: Context) : MethodChannel.Method
     }
 
     private data class TimedImage(val image: Image, val timestampUs: Long)
+
+    // ---------------------------------------------------------------------
+    // FR-005: motion magnitude sampler.
+    // ---------------------------------------------------------------------
+    private fun handleMotionMagnitudes(call: MethodCall, result: MethodChannel.Result) {
+        val videoPath = call.argument<String>("videoPath")
+        val sampleFps = call.argument<Int>("sampleFps") ?: 5
+        val downscaleTo = call.argument<Int>("downscaleTo") ?: 240
+        val durationMs = (call.argument<Number>("durationMs"))?.toLong() ?: 0L
+        if (videoPath == null) {
+            result.error("bad_args", "Missing videoPath", null)
+            return
+        }
+        executor.execute {
+            try {
+                val samples = computeMotionMagnitudes(
+                    videoPath = videoPath,
+                    sampleFps = max(1, sampleFps),
+                    downscaleTo = max(40, downscaleTo),
+                    durationMs = durationMs,
+                )
+                mainHandler.post { result.success(samples) }
+            } catch (t: Throwable) {
+                mainHandler.post {
+                    result.error("motion_failed", t.message ?: t.toString(), null)
+                }
+            }
+        }
+    }
+
+    private fun computeMotionMagnitudes(
+        videoPath: String,
+        sampleFps: Int,
+        downscaleTo: Int,
+        durationMs: Long,
+    ): List<Map<String, Any>> {
+        val extractor = MediaExtractor()
+        var decoder: MediaCodec? = null
+        var imageReader: ImageReader? = null
+        val readerThread = HandlerThread("golfbuddy-motion-reader").apply { start() }
+        val readerHandler = Handler(readerThread.looper)
+        val pending = LinkedBlockingQueue<TimedImage>(4)
+
+        try {
+            extractor.setDataSource(videoPath)
+            val trackIndex = selectVideoTrack(extractor)
+                ?: throw IllegalStateException("No video track in $videoPath")
+            extractor.selectTrack(trackIndex)
+            val format = extractor.getTrackFormat(trackIndex)
+            val mime = format.getString(MediaFormat.KEY_MIME)
+                ?: throw IllegalStateException("Track has no MIME type")
+            val width = format.getInteger(MediaFormat.KEY_WIDTH)
+            val height = format.getInteger(MediaFormat.KEY_HEIGHT)
+
+            imageReader = ImageReader.newInstance(
+                width,
+                height,
+                ImageFormat.YUV_420_888,
+                4,
+            )
+            imageReader.setOnImageAvailableListener({ reader ->
+                val img = try {
+                    reader.acquireNextImage()
+                } catch (_: Throwable) {
+                    null
+                } ?: return@setOnImageAvailableListener
+                if (!pending.offer(TimedImage(img, img.timestamp / 1000L), 2, TimeUnit.SECONDS)) {
+                    img.close()
+                }
+            }, readerHandler)
+
+            decoder = MediaCodec.createDecoderByType(mime)
+            decoder.configure(format, imageReader.surface, null, 0)
+            decoder.start()
+
+            // Downscale dimensions (preserve aspect).
+            val scale = downscaleTo.toFloat() / max(width, height).toFloat()
+            val dstW = max(8, (width * scale).toInt())
+            val dstH = max(8, (height * scale).toInt())
+            val pixelCount = dstW * dstH
+
+            val bufferInfo = MediaCodec.BufferInfo()
+            val frameIntervalUs = 1_000_000L / sampleFps
+
+            val samples = ArrayList<Map<String, Any>>()
+            var frameIndex = 0
+            var prev: ByteArray? = null
+            // Sampling loop: seek-decode-diff, stopping when frames run out.
+            while (true) {
+                val targetUs = frameIndex * frameIntervalUs
+                val targetMs = targetUs / 1000L
+                if (durationMs > 0 && targetMs > durationMs) break
+
+                extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                decoder.flush()
+                drainQueue(pending)
+
+                val timed = decodeUntil(decoder, extractor, bufferInfo, pending, targetUs)
+                    ?: break
+                val gray = downscaledLuma(timed.image, dstW, dstH)
+                timed.image.close()
+
+                if (prev != null) {
+                    val magnitude = meanAbsoluteDiff(prev!!, gray, pixelCount)
+                    samples.add(
+                        mapOf(
+                            "timestampMs" to targetMs.toInt(),
+                            "magnitude" to magnitude,
+                        )
+                    )
+                }
+                prev = gray
+                frameIndex++
+                // Safety cap: ~30 min at 5 fps = 9000 pairs.
+                if (frameIndex > 10_000) break
+            }
+            return samples
+        } finally {
+            drainQueue(pending)
+            try { decoder?.stop() } catch (_: Throwable) {}
+            try { decoder?.release() } catch (_: Throwable) {}
+            try { extractor.release() } catch (_: Throwable) {}
+            try { imageReader?.close() } catch (_: Throwable) {}
+            readerThread.quitSafely()
+        }
+    }
+
+    // Nearest-neighbour downscale of the Y plane into a dstW*dstH byte array.
+    private fun downscaledLuma(image: Image, dstW: Int, dstH: Int): ByteArray {
+        val yPlane = image.planes[0]
+        val yBuf = yPlane.buffer
+        val rowStride = yPlane.rowStride
+        val pixelStride = yPlane.pixelStride
+        val srcW = image.width
+        val srcH = image.height
+        val out = ByteArray(dstW * dstH)
+        val rowBuf = ByteArray(rowStride)
+        for (y in 0 until dstH) {
+            val srcY = (y.toLong() * srcH / dstH).toInt().coerceIn(0, srcH - 1)
+            yBuf.position(srcY * rowStride)
+            val len = min(rowStride, yBuf.remaining())
+            yBuf.get(rowBuf, 0, len)
+            for (x in 0 until dstW) {
+                val srcX = (x.toLong() * srcW / dstW).toInt().coerceIn(0, srcW - 1)
+                val idx = srcX * pixelStride
+                out[y * dstW + x] = if (idx < len) rowBuf[idx] else 0
+            }
+        }
+        return out
+    }
+
+    private fun meanAbsoluteDiff(a: ByteArray, b: ByteArray, pixelCount: Int): Double {
+        val n = min(a.size, b.size)
+        var sum = 0L
+        for (i in 0 until n) {
+            val da = (a[i].toInt() and 0xFF) - (b[i].toInt() and 0xFF)
+            sum += if (da < 0) -da else da
+        }
+        val denom = if (pixelCount > 0) pixelCount else n
+        return sum.toDouble() / denom.toDouble()
+    }
+
+    // ---------------------------------------------------------------------
+    // FR-005: lossless trim via MediaMuxer (stream-copy).
+    // ---------------------------------------------------------------------
+    private fun handleTrimClip(call: MethodCall, result: MethodChannel.Result) {
+        val videoPath = call.argument<String>("videoPath")
+        val outputPath = call.argument<String>("outputPath")
+        val startMs = (call.argument<Number>("startMs"))?.toLong()
+        val endMs = (call.argument<Number>("endMs"))?.toLong()
+        if (videoPath == null || outputPath == null || startMs == null || endMs == null) {
+            result.error("bad_args", "Missing trim arguments", null)
+            return
+        }
+        executor.execute {
+            try {
+                val path = trimClip(videoPath, outputPath, startMs, endMs)
+                mainHandler.post { result.success(path) }
+            } catch (t: Throwable) {
+                mainHandler.post {
+                    result.error("trim_failed", t.message ?: t.toString(), null)
+                }
+            }
+        }
+    }
+
+    private fun trimClip(
+        videoPath: String,
+        outputPath: String,
+        startMs: Long,
+        endMs: Long,
+    ): String {
+        val outFile = File(outputPath)
+        outFile.parentFile?.mkdirs()
+        if (outFile.exists()) outFile.delete()
+
+        val extractor = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        try {
+            extractor.setDataSource(videoPath)
+            val trackCount = extractor.trackCount
+            if (trackCount == 0) throw IllegalStateException("No tracks in $videoPath")
+
+            muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+
+            // Map source track index -> muxer track index. Includes audio if present.
+            val indexMap = HashMap<Int, Int>(trackCount)
+            var maxBufferSize = 0
+            for (i in 0 until trackCount) {
+                val fmt = extractor.getTrackFormat(i)
+                val mime = fmt.getString(MediaFormat.KEY_MIME) ?: continue
+                if (!(mime.startsWith("video/") || mime.startsWith("audio/"))) continue
+                val muxIdx = muxer.addTrack(fmt)
+                indexMap[i] = muxIdx
+                val tsize = if (fmt.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                    fmt.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)
+                } else {
+                    1_048_576
+                }
+                if (tsize > maxBufferSize) maxBufferSize = tsize
+            }
+            if (indexMap.isEmpty()) {
+                throw IllegalStateException("No video/audio tracks found for trim")
+            }
+            muxer.start()
+
+            val endUs = endMs * 1000L
+            val buffer = ByteBuffer.allocate(max(maxBufferSize, 1_048_576))
+            val info = MediaCodec.BufferInfo()
+
+            // Copy each track independently. Seek to the previous sync for video;
+            // audio can seek to the closest sync (may start slightly earlier — ok as padding).
+            for ((srcIdx, muxIdx) in indexMap) {
+                extractor.selectTrack(srcIdx)
+                extractor.seekTo(startMs * 1000L, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                while (true) {
+                    buffer.clear()
+                    val size = extractor.readSampleData(buffer, 0)
+                    if (size < 0) break
+                    val pts = extractor.sampleTime
+                    if (pts > endUs) break
+                    info.offset = 0
+                    info.size = size
+                    info.presentationTimeUs = pts
+                    info.flags = sampleFlagsFromExtractor(extractor.sampleFlags)
+                    muxer.writeSampleData(muxIdx, buffer, info)
+                    extractor.advance()
+                }
+                extractor.unselectTrack(srcIdx)
+            }
+            return outputPath
+        } finally {
+            try { muxer?.stop() } catch (_: Throwable) {}
+            try { muxer?.release() } catch (_: Throwable) {}
+            try { extractor.release() } catch (_: Throwable) {}
+        }
+    }
+
+    private fun sampleFlagsFromExtractor(extractorFlags: Int): Int {
+        var out = 0
+        if ((extractorFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+            out = out or MediaCodec.BUFFER_FLAG_KEY_FRAME
+        }
+        return out
+    }
 }

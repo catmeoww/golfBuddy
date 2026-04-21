@@ -13,6 +13,7 @@ class CaptureState {
     this.lensDirection = CameraLensDirection.back,
     this.error,
     this.recordedFile,
+    this.longRecord = false,
   });
 
   final CaptureStage stage;
@@ -20,6 +21,8 @@ class CaptureState {
   final CameraLensDirection lensDirection;
   final String? error;
   final File? recordedFile;
+  // When true, the usual max-duration cap is bypassed (FR-005).
+  final bool longRecord;
 
   CaptureState copyWith({
     CaptureStage? stage,
@@ -27,6 +30,7 @@ class CaptureState {
     CameraLensDirection? lensDirection,
     String? error,
     File? recordedFile,
+    bool? longRecord,
   }) =>
       CaptureState(
         stage: stage ?? this.stage,
@@ -34,6 +38,7 @@ class CaptureState {
         lensDirection: lensDirection ?? this.lensDirection,
         error: error,
         recordedFile: recordedFile ?? this.recordedFile,
+        longRecord: longRecord ?? this.longRecord,
       );
 }
 
@@ -159,6 +164,15 @@ class CaptureController extends AutoDisposeNotifier<CaptureState> {
   void reset() {
     _countdownTimer?.cancel();
     state = state.copyWith(stage: CaptureStage.preview);
+  }
+
+  /// Toggle long-record mode (FR-005). Disables any max-duration cap.
+  void setLongRecord(bool value) {
+    if (state.stage == CaptureStage.recording ||
+        state.stage == CaptureStage.countdown) {
+      return;
+    }
+    state = state.copyWith(longRecord: value);
   }
 
   void _dispose() {

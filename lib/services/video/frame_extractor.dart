@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 
+import 'swing_detector.dart';
+
 class ExtractedFrame {
   const ExtractedFrame({
     required this.frameIndex,
@@ -85,6 +87,79 @@ class FrameExtractor {
       // best-effort cleanup
     } on MissingPluginException {
       // channel not available (tests); ignore
+    }
+  }
+
+  /// Returns per-pair frame motion magnitudes for [videoPath], sampled at
+  /// [sampleFps] frames-per-second. Android-only.
+  Future<List<MotionSample>> motionMagnitudes({
+    required String videoPath,
+    required int durationMs,
+    int sampleFps = 5,
+    int downscaleTo = 240,
+  }) async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError(
+        'Long record / auto-split is Android-only for now.',
+      );
+    }
+    try {
+      final raw =
+          await _channel.invokeMethod<List<dynamic>>('motionMagnitudes', {
+        'videoPath': videoPath,
+        'durationMs': durationMs,
+        'sampleFps': sampleFps,
+        'downscaleTo': downscaleTo,
+      });
+      if (raw == null) return const [];
+      return raw
+          .cast<Map<dynamic, dynamic>>()
+          .map(
+            (e) => MotionSample(
+              timestampMs: (e['timestampMs'] as num).toInt(),
+              magnitude: (e['magnitude'] as num).toDouble(),
+            ),
+          )
+          .toList(growable: false);
+    } on PlatformException catch (e) {
+      throw FrameExtractorException(e.message ?? e.code);
+    } on MissingPluginException catch (e) {
+      throw FrameExtractorException(
+        e.message ?? 'Frame extractor channel not registered.',
+      );
+    }
+  }
+
+  /// Losslessly stream-copies the packets in `[startMs, endMs]` from
+  /// [videoPath] into [outputPath] using native `MediaMuxer`. Android-only.
+  Future<String> trimClip({
+    required String videoPath,
+    required int startMs,
+    required int endMs,
+    required String outputPath,
+  }) async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError(
+        'Long record / auto-split is Android-only for now.',
+      );
+    }
+    try {
+      final result = await _channel.invokeMethod<String>('trimClip', {
+        'videoPath': videoPath,
+        'startMs': startMs,
+        'endMs': endMs,
+        'outputPath': outputPath,
+      });
+      if (result == null) {
+        throw FrameExtractorException('trimClip returned null');
+      }
+      return result;
+    } on PlatformException catch (e) {
+      throw FrameExtractorException(e.message ?? e.code);
+    } on MissingPluginException catch (e) {
+      throw FrameExtractorException(
+        e.message ?? 'Frame extractor channel not registered.',
+      );
     }
   }
 

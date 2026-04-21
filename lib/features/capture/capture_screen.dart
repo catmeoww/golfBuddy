@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +32,118 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     });
   }
 
+  Future<void> _onStop(CaptureState capture) async {
+    final file = await ref
+        .read(captureControllerProvider.notifier)
+        .stopRecording();
+    if (file == null || _selectedPlayerId == null) return;
+    if (!mounted) return;
+    final tag = await showModalBottomSheet<TagResult>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => TagSheet(
+        initialPlayerId: _selectedPlayerId!,
+      ),
+    );
+    if (tag == null) return;
+    final durationMs = _recordingStartedAt == null
+        ? 0
+        : DateTime.now().difference(_recordingStartedAt!).inMilliseconds;
+
+    if (capture.longRecord) {
+      await _runLongRecordSplit(file: file, tag: tag, durationMs: durationMs);
+    } else {
+      await _saveSingleSession(file: file, tag: tag, durationMs: durationMs);
+    }
+  }
+
+  Future<void> _saveSingleSession({
+    required File file,
+    required TagResult tag,
+    required int durationMs,
+  }) async {
+    final sessionId = await ref.read(saveSessionProvider).call(
+          SaveSessionInput(
+            tempVideo: file,
+            playerId: tag.playerId,
+            capturedAt: DateTime.now(),
+            durationMs: durationMs,
+            fps: 30,
+            club: tag.club,
+            tournamentId: tag.tournamentId,
+          ),
+        );
+    if (!mounted) return;
+    ref.read(captureControllerProvider.notifier).reset();
+    context.go('/library/sessions/$sessionId');
+  }
+
+  Future<void> _runLongRecordSplit({
+    required File file,
+    required TagResult tag,
+    required int durationMs,
+  }) async {
+    if (!Platform.isAndroid) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Long record / auto-split is Android-only for now.',
+          ),
+        ),
+      );
+      return;
+    }
+    // Fire-and-forget the split while we show a progress sheet.
+    final split = ref.read(splitLongRecordingProvider);
+    final future = split.call(
+      source: file,
+      playerId: tag.playerId,
+      club: tag.club,
+      tournamentId: tag.tournamentId,
+      totalDurationMs: durationMs,
+    );
+
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _SplittingDialog(),
+    );
+
+    List<String>? sessionIds;
+    Object? error;
+    try {
+      sessionIds = await future;
+    } catch (e) {
+      error = e;
+    }
+
+    if (!mounted) return;
+    // Dismiss the progress dialog.
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (error != null || sessionIds == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Auto-split failed: ${error ?? 'unknown error'}. '
+            'Original video kept.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    ref.read(captureControllerProvider.notifier).reset();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _DetectedSwingsSheet(sessionIds: sessionIds!),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final capture = ref.watch(captureControllerProvider);
@@ -48,10 +162,28 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     final canFlip = notifier.hasMultipleLenses;
     final flipDisabled = capture.stage == CaptureStage.recording ||
         capture.stage == CaptureStage.countdown;
+    final longRecordDisabled = capture.stage == CaptureStage.recording ||
+        capture.stage == CaptureStage.countdown;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Capture'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: FilterChip(
+              label: const Text('Long record'),
+              selected: capture.longRecord,
+              onSelected: longRecordDisabled
+                  ? null
+                  : (v) => notifier.setLongRecord(v),
+              avatar: Icon(
+                capture.longRecord
+                    ? Icons.fiber_smart_record
+                    : Icons.fiber_smart_record_outlined,
+                size: 18,
+              ),
+            ),
+          ),
           IconButton(
             tooltip: capture.lensDirection == CameraLensDirection.front
                 ? 'Switch to back camera'
@@ -103,41 +235,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                           .read(captureControllerProvider.notifier)
                           .startCountdown(_countdownSeconds);
                     },
-              onStop: () async {
-                final file = await ref
-                    .read(captureControllerProvider.notifier)
-                    .stopRecording();
-                if (file == null || _selectedPlayerId == null) return;
-                if (!mounted) return;
-                final tag = await showModalBottomSheet<TagResult>(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (_) => TagSheet(
-                    initialPlayerId: _selectedPlayerId!,
-                  ),
-                );
-                if (tag == null) return;
-                final durationMs = _recordingStartedAt == null
-                    ? 0
-                    : DateTime.now()
-                        .difference(_recordingStartedAt!)
-                        .inMilliseconds;
-                final sessionId =
-                    await ref.read(saveSessionProvider).call(
-                          SaveSessionInput(
-                            tempVideo: file,
-                            playerId: tag.playerId,
-                            capturedAt: DateTime.now(),
-                            durationMs: durationMs,
-                            fps: 30,
-                            club: tag.club,
-                            tournamentId: tag.tournamentId,
-                          ),
-                        );
-                if (!mounted) return;
-                ref.read(captureControllerProvider.notifier).reset();
-                context.go('/library/sessions/$sessionId');
-              },
+              onStop: () => _onStop(capture),
             ),
           ],
         ),
@@ -393,5 +491,87 @@ class _PlayerChipSelector extends ConsumerWidget {
           ),
         );
     onSelect(id);
+  }
+}
+
+class _SplittingDialog extends StatelessWidget {
+  const _SplittingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AlertDialog(
+      content: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+          SizedBox(width: 16),
+          Expanded(child: Text('Detecting swings...')),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetectedSwingsSheet extends StatelessWidget {
+  const _DetectedSwingsSheet({required this.sessionIds});
+
+  final List<String> sessionIds;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Detected ${sessionIds.length} '
+              'swing${sessionIds.length == 1 ? '' : 's'}',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            if (sessionIds.isEmpty)
+              const Text(
+                'No swings detected. Try again with more motion in frame.',
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: sessionIds.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final id = sessionIds[i];
+                    return ListTile(
+                      leading: CircleAvatar(child: Text('${i + 1}')),
+                      title: Text('Swing ${i + 1}'),
+                      subtitle: Text(id, overflow: TextOverflow.ellipsis),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        context.go('/library/sessions/$id');
+                      },
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Done'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

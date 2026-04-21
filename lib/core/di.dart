@@ -12,7 +12,10 @@ import '../data/repositories/session_repository.dart';
 import '../data/repositories/tournament_repository.dart';
 import '../domain/usecases/analyze_swing.dart';
 import '../domain/usecases/delete_session.dart';
+import '../domain/usecases/split_long_recording.dart';
 import '../domain/usecases/wipe_all_data.dart';
+import '../features/capture/save_session_usecase.dart';
+import '../services/video/frame_extractor.dart';
 
 // Single app-scoped Drift database. See LLD §5.
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -75,6 +78,16 @@ final wipeAllDataProvider = Provider<WipeAllData>(
   (ref) => WipeAllData(
     db: ref.watch(appDatabaseProvider),
     storage: ref.watch(videoStorageProvider),
+  ),
+);
+
+final frameExtractorProvider =
+    Provider<FrameExtractor>((ref) => const FrameExtractor());
+
+final splitLongRecordingProvider = Provider<SplitLongRecording>(
+  (ref) => SplitLongRecording(
+    frameExtractor: ref.watch(frameExtractorProvider),
+    saveSession: ref.watch(saveSessionProvider),
   ),
 );
 
