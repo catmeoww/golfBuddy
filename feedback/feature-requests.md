@@ -15,7 +15,7 @@ Running log of feature requests from real users. Add a new entry every time a us
 
 **Source:** M (husband, primary persona) — direct feedback after first use.
 **Date raised:** 2026-04-21
-**Status:** in progress
+**Status:** shipped on commit `2b52c71`
 
 **What he wants:**
 - Pause the video at a specific frame, draw circles around the head and lines along hands, waist, and legs, then play through the swing to see whether the body stays inside / aligned with the reference shapes.
