@@ -28,6 +28,8 @@ dependencies:
   camera: ^0.11.0+1
   video_player: ^2.9.1
   google_mlkit_pose_detection: ^0.14.0
+  # Gallery picker (FR-006).
+  image_picker: ^1.1.0
   # Frame extraction: deferred. Arthenica's ffmpeg_kit Maven AARs were
   # delisted upstream and every community "fork" we tried still depends
   # on them. Need a platform-channel MediaCodec extractor (Android) and

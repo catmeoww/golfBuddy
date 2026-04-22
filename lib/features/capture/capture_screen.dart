@@ -4,6 +4,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/di.dart';
 import '../../domain/models/player.dart';
@@ -23,6 +25,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   String? _selectedPlayerId;
   DateTime? _recordingStartedAt;
   int _countdownSeconds = 5;
+  // Guards against double-tap on the gallery upload button while a pick is
+  // in flight (the native picker is modal, but the post-pick work is async).
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -54,6 +59,65 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       await _runLongRecordSplit(file: file, tag: tag, durationMs: durationMs);
     } else {
       await _saveSingleSession(file: file, tag: tag, durationMs: durationMs);
+    }
+  }
+
+  // FR-006: gallery upload path. Third entry point alongside single and
+  // long-record capture; reuses SaveSession unchanged (no trimming).
+  Future<void> _onUpload() async {
+    if (_uploading) return;
+    if (_selectedPlayerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a player first.')),
+      );
+      return;
+    }
+    setState(() => _uploading = true);
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickVideo(source: ImageSource.gallery);
+      if (picked == null) return; // user cancelled
+      final file = File(picked.path);
+      final durationMs = await _readVideoDurationMs(file);
+      if (!mounted) return;
+      final tag = await showModalBottomSheet<TagResult>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => TagSheet(initialPlayerId: _selectedPlayerId!),
+      );
+      if (tag == null) return;
+      final sessionId = await ref.read(saveSessionProvider).call(
+            SaveSessionInput(
+              tempVideo: file,
+              playerId: tag.playerId,
+              capturedAt: DateTime.now(),
+              durationMs: durationMs,
+              fps: 30,
+              club: tag.club,
+              tournamentId: tag.tournamentId,
+            ),
+          );
+      if (!mounted) return;
+      context.go('/library/sessions/$sessionId');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upload failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  // One-shot VideoPlayerController to read duration from a file picked out
+  // of the gallery (image_picker does not expose this).
+  Future<int> _readVideoDurationMs(File file) async {
+    final probe = VideoPlayerController.file(file);
+    try {
+      await probe.initialize();
+      return probe.value.duration.inMilliseconds;
+    } finally {
+      await probe.dispose();
     }
   }
 
@@ -164,8 +228,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         capture.stage == CaptureStage.countdown;
     final longRecordDisabled = capture.stage == CaptureStage.recording ||
         capture.stage == CaptureStage.countdown;
+    final uploadDisabled = capture.stage == CaptureStage.recording ||
+        capture.stage == CaptureStage.countdown ||
+        capture.stage == CaptureStage.saving ||
+        _uploading;
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Upload from gallery',
+          icon: const Icon(Icons.file_upload_outlined),
+          onPressed: uploadDisabled ? null : _onUpload,
+        ),
         title: const Text('Capture'),
         actions: [
           Padding(

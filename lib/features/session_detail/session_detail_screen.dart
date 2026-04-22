@@ -47,8 +47,17 @@ class _SessionDetailScreenState
   // FR-001 — Draw mode state.
   bool _drawMode = false;
   MarkupKind _activeTool = MarkupKind.circle;
-  static const Color _drawColor = Color(0xFFFFC107);
+  // FR-007 — active color now mutable; resets to yellow each screen entry.
+  Color _drawColor = const Color(0xFFFFC107);
   static const double _drawStroke = 3.0;
+
+  static const _colorPresets = <Color>[
+    Color(0xFFFFC107), // yellow
+    Color(0xFF2BB673), // green
+    Color(0xFFE53935), // red
+    Color(0xFF1E88E5), // blue
+    Color(0xFFFFFFFF), // white
+  ];
 
   static const _speedCycle = [1.0, 0.5, 0.25];
 
@@ -229,9 +238,12 @@ class _SessionDetailScreenState
                         'Analysis failed. Video + notes still work; try again.',
                   ),
                 if (_drawMode)
-                  _DrawToolbar(
+                  DrawToolbar(
                     activeTool: _activeTool,
                     onPickTool: (k) => setState(() => _activeTool = k),
+                    activeColor: _drawColor,
+                    colorPresets: _colorPresets,
+                    onPickColor: (c) => setState(() => _drawColor = c),
                     onDone: _toggleDrawMode,
                   ),
                 _VideoArea(
@@ -702,15 +714,21 @@ class _AnnotationsSection extends StatelessWidget {
   }
 }
 
-class _DrawToolbar extends StatelessWidget {
-  const _DrawToolbar({
+class DrawToolbar extends StatelessWidget {
+  const DrawToolbar({
     required this.activeTool,
     required this.onPickTool,
+    required this.activeColor,
+    required this.colorPresets,
+    required this.onPickColor,
     required this.onDone,
   });
 
   final MarkupKind activeTool;
   final ValueChanged<MarkupKind> onPickTool;
+  final Color activeColor;
+  final List<Color> colorPresets;
+  final ValueChanged<Color> onPickColor;
   final VoidCallback onDone;
 
   @override
@@ -740,6 +758,12 @@ class _DrawToolbar extends StatelessWidget {
               onSelectionChanged: (set) =>
                   onPickTool(set.isEmpty ? activeTool : set.first),
             ),
+            const SizedBox(width: 8),
+            _ColorSwatchRow(
+              presets: colorPresets,
+              active: activeColor,
+              onPick: onPickColor,
+            ),
             const Spacer(),
             FilledButton.icon(
               onPressed: onDone,
@@ -749,6 +773,53 @@ class _DrawToolbar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ColorSwatchRow extends StatelessWidget {
+  const _ColorSwatchRow({
+    required this.presets,
+    required this.active,
+    required this.onPick,
+  });
+
+  final List<Color> presets;
+  final Color active;
+  final ValueChanged<Color> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final c in presets)
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => onPick(c),
+              child: Center(
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: c,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: c.toARGB32() == active.toARGB32()
+                          ? onSurface
+                          : onSurface.withValues(alpha: 0.25),
+                      width: c.toARGB32() == active.toARGB32() ? 3 : 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
