@@ -98,6 +98,8 @@ Running log of feature requests from real users. Add a new entry every time a us
 - Need to add a Flutter package: `image_picker` (or `file_picker`) for the gallery sheet.
 - Android needs the `READ_MEDIA_VIDEO` permission (API 33+) declared in the manifest.
 
+**Status:** shipped on commit `dabe277`
+
 ---
 
 ## FR-003 — Pro-swing comparison with time-warped playback
@@ -214,6 +216,8 @@ c. **Phase-anchored seek.** Tap "top of backswing" → both videos jump to their
 **Out of scope for v1:**
 - Custom RGB picker / color wheel.
 - Per-drawing re-color after the fact (delete + redraw is enough for v1).
+
+**Status:** shipped on commit `dabe277`
 
 ---
 
